@@ -15,6 +15,7 @@ LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE := wolfssljni
 LOCAL_REQUIRED_MODULES := libwolfssljni libwolfssl
 LOCAL_ADDITIONAL_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
+LOCAL_JAVA_LIBRARIES := core-libart
 include $(BUILD_JAVA_LIBRARY)
 
 # Create wolfSSL JNI native library
