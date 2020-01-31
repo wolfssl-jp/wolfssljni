@@ -407,6 +407,33 @@ public class WolfSSLContext extends SSLContextSpi {
         throw new UnsupportedOperationException("Not supported by wolfJSSE");
     }
 
+    /**
+     * Returns copy of SSLParameters with default settings for this SSLContext.
+     */
+    @Override
+    protected SSLParameters engineGetDefaultSSLParameters() {
+        return WolfSSLEngineHelper.decoupleParams(this.params);
+    }
+
+    /**
+     * Returns copy of SSLParameters with max supported settings for this
+     * SSLContext.
+     */
+    @Override
+    protected SSLParameters engineGetSupportedSSLParameters() {
+        return WolfSSLEngineHelper.decoupleParams(this.params);
+    }
+
+    /* used internally by SSLSocketFactory() */
+    protected WolfSSLAuthStore getInternalAuthStore() {
+        return this.authStore;
+    }
+
+    /* used internally by SSLSocketFactory() */
+    protected SSLParameters getInternalSSLParams() {
+        return this.params;
+    }
+
     public static final class TLSV1_Context extends WolfSSLContext {
         public TLSV1_Context() {
             super(TLS_VERSION.TLSv1);
