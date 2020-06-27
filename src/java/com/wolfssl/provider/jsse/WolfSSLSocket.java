@@ -1161,7 +1161,7 @@ public class WolfSSLSocket extends SSLSocket {
                         WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
                             "Native wolfSSL_read() error: " + errStr +
                             " (error code: " + err + ")");
-                        throw new IOException("Native wolfSSL_read() " +
+                        throw new SocketException("Native wolfSSL_read() " +
                             "error: " + errStr +
                             " (error code: " + err + ")");
                     }
