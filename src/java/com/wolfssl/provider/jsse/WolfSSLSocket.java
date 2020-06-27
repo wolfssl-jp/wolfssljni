@@ -1148,9 +1148,13 @@ public class WolfSSLSocket extends SSLSocket {
                         /* check to see if we received a close notify alert.
                          * if so, throw SocketException since peer has closed
                          * the connection */
+                        
+                        /***  Tentatively comment out
                         if (ssl.gotCloseNotify() == true) {
                             throw new SocketException("Peer closed connection");
                         }
+                        ***/
+                        
                         return -1;
                     }
 
