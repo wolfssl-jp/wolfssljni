@@ -86,6 +86,10 @@ public class WolfSSLSocket extends SSLSocket {
      * entering library */
     final private Object ioLock = new Object();
 
+    /* protect read/write operation while copying data into buffers */
+    final private Object readLock = new Object();
+    final private Object writeLock = new Object();
+
     public WolfSSLSocket(com.wolfssl.WolfSSLContext context,
            WolfSSLAuthStore authStore, WolfSSLParameters params,
            boolean clientMode)
@@ -603,12 +607,18 @@ public class WolfSSLSocket extends SSLSocket {
         }
 
         synchronized (ioLock) {
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                             "thread got ioLock (handshake)");
+
             /* will throw SSLHandshakeException if session creation is
                not allowed */
             EngineHelper.initHandshake();
             handshakeInitCalled = true;
 
             ret = EngineHelper.doHandshake(0);
+
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                             "thread exiting ioLock (handshake)");
         }
 
         if (ret != WolfSSL.SSL_SUCCESS) {
@@ -869,7 +879,13 @@ public class WolfSSLSocket extends SSLSocket {
                 }
 
                 synchronized (ioLock) {
+                    WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                                     "thread got ioLock (shutdown)");
+
                     ssl.shutdownSSL();
+
+                    WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                                     "thread exiting ioLock (shutdown)");
                 }
 
                 synchronized (handshakeLock) {
@@ -1130,16 +1146,27 @@ public class WolfSSLSocket extends SSLSocket {
                 data = b;
             }
 
-            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,"Entering ioLock.READ");
-
-            synchronized (ioLock) {
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                             "thread trying to get readLock");
+            synchronized (readLock) {
                 try {
-
                     int err;
-                    WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,"Entered ioLock.READ");
+
+                    WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                                     "thread got readLock");
                     do {
-                        ret = ssl.read(data, len);
-                        err = ssl.getError(ret);
+                        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                                         "read thread trying to get ioLock");
+                        synchronized (ioLock) {
+                            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                                             "read thread got ioLock");
+
+                            ret = ssl.read(data, len);
+                            err = ssl.getError(ret);
+
+                            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                                             "read thread exiting ioLock");
+                        }
                     } while ((ret < 0) && (err == WolfSSL.SSL_ERROR_WANT_READ));
 
                     /* check for end of stream */
@@ -1151,13 +1178,9 @@ public class WolfSSLSocket extends SSLSocket {
                         /* check to see if we received a close notify alert.
                          * if so, throw SocketException since peer has closed
                          * the connection */
-                        
-                        /***  Tentatively comment out
                         if (ssl.gotCloseNotify() == true) {
                             throw new SocketException("Peer closed connection");
                         }
-                        ***/
-                        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,"Exit ioLock.READ");
                         return -1;
                     }
 
@@ -1168,7 +1191,7 @@ public class WolfSSLSocket extends SSLSocket {
                         WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
                             "Native wolfSSL_read() error: " + errStr +
                             " (error code: " + err + ")");
-                        throw new SocketException("Native wolfSSL_read() " +
+                        throw new IOException("Native wolfSSL_read() " +
                             "error: " + errStr +
                             " (error code: " + err + ")");
                     }
@@ -1182,7 +1205,9 @@ public class WolfSSLSocket extends SSLSocket {
                     System.arraycopy(data, 0, b, off, ret);
                 }
 
-                WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,"Exit ioLock.READ");
+                WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                                 "thread exiting readLock");
+
                 /* return number of bytes read */
                 return ret;
             }
@@ -1241,17 +1266,26 @@ public class WolfSSLSocket extends SSLSocket {
             } else {
                 data = b;
             }
-            
-            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,"Entering ioLock.WRITE");
-            
-            synchronized (ioLock) {
+
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                             "thread trying to get writeLock");
+            synchronized (writeLock) {
                 try {
                     int err;
-                    
-                    WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,"Entered ioLock.WRITE");
+
+                    WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                                     "thread got writeLock");
                     do {
-                        ret = ssl.write(data, len);
-                        err = ssl.getError(ret);
+                        synchronized (ioLock) {
+                            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                                             "write thread got ioLock");
+
+                            ret = ssl.write(data, len);
+                            err = ssl.getError(ret);
+
+                            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                                             "write thread exiting ioLock");
+                        }
                     } while ((ret < 0) && (err == WolfSSL.SSL_ERROR_WANT_WRITE));
 
                     /* check for end of stream */
@@ -1275,11 +1309,15 @@ public class WolfSSLSocket extends SSLSocket {
                                 + errStr + " (error code: " + err + ")");
                     }
 
-                    WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,"Exit ioLock.WRITE");
-        
                 } catch (IllegalStateException e) {
+                    WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                                     "got IllegalStateException: " + e +
+                                     ", throwing IOException");
                     throw new IOException(e);
                 }
+
+                WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                                 "thread exiting writeLock");
             }
         }
     } /* end WolfSSLOutputStream inner class */
