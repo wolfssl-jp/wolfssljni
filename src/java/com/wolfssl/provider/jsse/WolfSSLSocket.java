@@ -1130,10 +1130,13 @@ public class WolfSSLSocket extends SSLSocket {
                 data = b;
             }
 
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,"Entering ioLock.READ");
+
             synchronized (ioLock) {
                 try {
 
                     int err;
+                    WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,"Entered ioLock.READ");
                     do {
                         ret = ssl.read(data, len);
                         err = ssl.getError(ret);
@@ -1154,7 +1157,7 @@ public class WolfSSLSocket extends SSLSocket {
                             throw new SocketException("Peer closed connection");
                         }
                         ***/
-                        
+                        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,"Exit ioLock.READ");
                         return -1;
                     }
 
@@ -1179,6 +1182,7 @@ public class WolfSSLSocket extends SSLSocket {
                     System.arraycopy(data, 0, b, off, ret);
                 }
 
+                WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,"Exit ioLock.READ");
                 /* return number of bytes read */
                 return ret;
             }
@@ -1237,10 +1241,14 @@ public class WolfSSLSocket extends SSLSocket {
             } else {
                 data = b;
             }
-
+            
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,"Entering ioLock.WRITE");
+            
             synchronized (ioLock) {
                 try {
                     int err;
+                    
+                    WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,"Entered ioLock.WRITE");
                     do {
                         ret = ssl.write(data, len);
                         err = ssl.getError(ret);
@@ -1267,6 +1275,8 @@ public class WolfSSLSocket extends SSLSocket {
                                 + errStr + " (error code: " + err + ")");
                     }
 
+                    WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,"Exit ioLock.WRITE");
+        
                 } catch (IllegalStateException e) {
                     throw new IOException(e);
                 }
