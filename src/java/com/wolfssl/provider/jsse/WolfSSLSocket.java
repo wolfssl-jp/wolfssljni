@@ -819,7 +819,7 @@ public class WolfSSLSocket extends SSLSocket {
     synchronized public InputStream getInputStream() throws IOException {
 
         WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
-            "entered getInputStream()");
+            "entered getInputStream()  = " + this + ", " + inStream);
 
         return inStream;
     }
@@ -835,7 +835,7 @@ public class WolfSSLSocket extends SSLSocket {
     synchronized public OutputStream getOutputStream() throws IOException {
 
         WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
-            "entered getOutputStream()");
+            "entered getOutputStream() = " + this + ", " + outStream);
 
         return outStream;
     }
@@ -919,7 +919,7 @@ public class WolfSSLSocket extends SSLSocket {
         throws IOException {
 
         WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
-            "entered connect(SocketAddress endpoint)");
+            "entered connect(SocketAddress endpoint) = " + this);
 
         if (!(endpoint instanceof InetSocketAddress)) {
             throw new IllegalArgumentException("endpoint is not of type " +
@@ -952,6 +952,9 @@ public class WolfSSLSocket extends SSLSocket {
         } catch (WolfSSLException e) {
             throw new IOException(e);
         }
+
+        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+            "connected(SocketAddress endpoint, int timeout) = " + this);
     }
 
     /**
@@ -1000,6 +1003,9 @@ public class WolfSSLSocket extends SSLSocket {
         } catch (WolfSSLException e) {
             throw new IOException(e);
         }
+
+        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+            "connected(SocketAddress endpoint, int timeout) = " + this);
     }
 
     @SuppressWarnings("deprecation")
@@ -1147,7 +1153,7 @@ public class WolfSSLSocket extends SSLSocket {
             }
 
             WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
-                             "thread trying to get readLock");
+                             "thread trying to get readLoc, WolfSSLInputStream = " + this);
             synchronized (readLock) {
                 try {
                     int err;
@@ -1271,7 +1277,7 @@ public class WolfSSLSocket extends SSLSocket {
             }
 
             WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
-                             "thread trying to get writeLock");
+                             "thread trying to get writeLock, WolfSSLOutputStream = " + this);
             synchronized (writeLock) {
                 try {
                     int err;
