@@ -34,6 +34,9 @@ import java.net.Socket;
  */
 public class WolfSSL {
 
+    /* ------------------ wolfSSL JNI error codes ----------------------- */
+    public final static int JNI_SESSION_UNAVAILABLE = -10001;
+
     /* ----------------------- wolfSSL codes ---------------------------- */
 
     public final static int SSL_ERROR_NONE      =  0;
@@ -113,6 +116,7 @@ public class WolfSSL {
     public final static int SSL_ERROR_WANT_X509_LOOKUP = 83;
     public final static int SSL_ERROR_ZERO_RETURN      =  6;
     public final static int SSL_ERROR_SSL              = 85;
+    public final static int SSL_ERROR_SOCKET_PEER_CLOSED = -397;
 
     /* extra definitions from ssl.h */
     public final static int WOLFSSL_CRL_CHECKALL      = 1;
@@ -905,6 +909,13 @@ public class WolfSSL {
      */
     public static native String[] getProtocols();
 
+    /**
+     * Checks which protocols where built into wolfSSL with Mask
+     *
+     * @param mask flags prohibiting TLS version (i.e. SSL_OP_NO_xxx)
+     * @return an array of Strings for supported protocols
+     */
+    public static native String[] getProtocolsMask(long mask);
 
 } /* end WolfSSL */
 

@@ -53,7 +53,7 @@ public class WolfSSLSession {
     private Object rsaDecCtx;
 
     /* reference to the associated WolfSSLContext */
-    private WolfSSLContext ctx;
+    private WolfSSLContext ctx = null;
 
     /* user-registered PSK callbacks, also at WolfSSLContext level */
     private WolfSSLPskClientCallback internPskClientCb = null;
@@ -260,9 +260,15 @@ public class WolfSSLSession {
     private native void setAcceptState(long ssl);
     private native void setVerify(long ssl, int mode, WolfSSLVerifyCallback vc);
     private native long setOptions(long ssl, long op);
+    private native long getOptions(long ssl);
     private native int getShutdown(long ssl);
     private native void setSSLIORecv(long ssl);
     private native void setSSLIOSend(long ssl);
+    private native int useSNI(long ssl, byte type, byte[] data);
+    private native int useSessionTicket(long ssl);
+    private native int gotCloseNotify(long ssl);
+    private native int sslSetAlpnProtos(long ssl, byte[] alpnProtos);
+    private native byte[] sslGet0AlpnSelected(long ssl);
 
     /* ------------------- session-specific methods --------------------- */
 
@@ -637,7 +643,7 @@ public class WolfSSLSession {
         throws IllegalStateException, WolfSSLJNIException {
 
         if (this.active == false)
-            throw new IllegalStateException("Object has been freed");
+            return;
 
         /* free native resources */
         freeSSL(getSessionPtr());
@@ -769,7 +775,8 @@ public class WolfSSLSession {
      * Returns the session ID.
      *
      * @throws IllegalStateException WolfSSLContext has been freed
-     * @return      the session ID
+     * @return      the session ID, or a empty array if unable to get valid
+     *              session ID
      * @see         #setSession(long)
      */
     public byte[] getSessionID() throws IllegalStateException {
@@ -777,7 +784,12 @@ public class WolfSSLSession {
         if (this.active == false)
             throw new IllegalStateException("Object has been freed");
 
-        return getSessionID(getSession());
+        long sess = getSession();
+        if (sess != 0) {
+            return getSessionID(sess);
+        } else {
+            return new byte[0];
+        }
     }
 
     /**
@@ -800,16 +812,27 @@ public class WolfSSLSession {
      *
      * @param t time in seconds to set
      * @throws IllegalStateException WolfSSLContext has been freed
-     * @return WOLFSSL_SUCCESS on success, negative values on failure.
+     * @return WolfSSL.SSL_SUCCESS on success, WolfSSL.JNI_SESSION_UNAVAILABLE
+     *         if underlying session is unavailable, or negative values
+     *         on failure.
      * @see         #setSession(long)
      * @see         #getSession(long)
      */
     public long setSessTimeout(long t) throws IllegalStateException {
 
+        long session;
+
         if (this.active == false)
             throw new IllegalStateException("Object has been freed");
 
-        return setSessTimeout(this.getSession(), t);
+        session = this.getSession();
+        if (session == 0) {
+            /* session may be null if session cache disabled, wolfSSL
+             * doesn't have session ID available, mutex function fails, etc */
+            return WolfSSL.JNI_SESSION_UNAVAILABLE;
+        }
+
+        return setSessTimeout(session, t);
     }
 
     /**
@@ -2342,6 +2365,43 @@ public class WolfSSLSession {
         return setOptions(getSessionPtr(), op);
     }
 
+
+    /**
+     * Gets the options to use for the WOLFSSL structure.
+     * Example options are WolfSSL.SSL_OP_NO_SSLv3
+     *
+     *
+     * @return returns the revised options bit mask on success
+     * @throws IllegalStateException WolfSSLContext has been freed
+     */
+    public long getOptions()
+            throws IllegalStateException {
+
+        if (this.active == false)
+            throw new IllegalStateException("Object has been freed");
+
+        return getOptions(getSessionPtr());
+    }
+
+    /**
+     * Returns true if the last alert received by this session was a
+     * close_notify alert from the peer.
+     *
+     * @return true if close_notify has been received, otherwise false
+     */
+    public boolean gotCloseNotify() {
+        if (this.active == false)
+            throw new IllegalStateException("Object has been freed");
+
+        int ret = gotCloseNotify(getSessionPtr());
+
+        if (ret == 1) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
     /**
      * Registers a receive callback for wolfSSL to get input data.
      * By default, wolfSSL uses EmbedReceive() in src/io.c as the callback.
@@ -2390,7 +2450,7 @@ public class WolfSSLSession {
      *                  must follow that as shown in
      *                  WolfSSLIOSendCallback#sendCallback(WolfSSLSession,
      *                  byte[], int, Object).
-     * @throws IllegalStateException WolfSSLContext has been freed
+     * @throws IllegalStateException WolfSSLSession has been freed
      * @throws WolfSSLJNIException Internal JNI error
      * @see    #setIORecv(WolfSSLIORecvCallback)
      */
@@ -2405,6 +2465,65 @@ public class WolfSSLSession {
 
         /* register internal callback with native library */
         setSSLIOSend(getSessionPtr());
+    }
+
+    public int useSNI(byte type, byte[] data) throws IllegalStateException {
+
+        int ret;
+
+        if (this.active == false)
+            throw new IllegalStateException("Object has been freed");
+
+        ret = useSNI(getSessionPtr(), type, data);
+
+        return ret;
+    }
+
+    /**
+     * Enable session tickets for this session.
+     *
+     * @return WolfSSL.SSL_SUCCESS on success, otherwise negative.
+     * @throws IllegalStateException WolfSSLSession has been freed
+     */
+    public int useSessionTicket() throws IllegalStateException {
+
+        if (this.active == false)
+            throw new IllegalStateException("Object has been freed");
+
+        return useSessionTicket(getSessionPtr());
+    }
+
+    /**
+     * Set ALPN extension protocol for this session.
+     * Calls native SSL_set_alpn_protos() at native level. Format starts with
+     * length, where length does not include length byte itself. Example format:
+     *
+     * byte[] p = "http/1.1".getBytes();
+     *
+     * @param alpnProtos ALPN protocols, encoded as byte array vector
+     * @return WolfSSL.SSL_SUCCESS on success, otherwise negative.
+     */
+    public int setAlpnProtos(byte[] alpnProtos) throws IllegalStateException {
+
+        if (this.active == false)
+            throw new IllegalStateException("Object has been freed");
+
+        return sslSetAlpnProtos(getSessionPtr(), alpnProtos);
+    }
+
+    /**
+     * Get the ALPN protocol selected by the client/server for this session.
+     *
+     * @return byte array representation of selected protocol, starting with
+     *         length byte. Length does not include length byte itself.
+     * @throws IllegalStateException WolfSSLSession has been freed
+     */
+    public byte[] getAlpnSelected() throws IllegalStateException {
+
+        if (this.active == false)
+            throw new IllegalStateException("Object has been freed");
+
+        return sslGet0AlpnSelected(getSessionPtr());
     }
 
     /**
@@ -2448,6 +2567,7 @@ public class WolfSSLSession {
             /* free resources, set state */
             this.freeSSL();
             this.active = false;
+            this.sslPtr = 0;
         }
         super.finalize();
     }

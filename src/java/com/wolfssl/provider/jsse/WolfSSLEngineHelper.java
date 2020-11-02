@@ -21,13 +21,20 @@
 package com.wolfssl.provider.jsse;
 
 import com.wolfssl.WolfSSL;
+import com.wolfssl.WolfSSLVerifyCallback;
 import com.wolfssl.WolfSSLException;
 import com.wolfssl.WolfSSLSession;
+import com.wolfssl.WolfSSLCertificate;
+import com.wolfssl.WolfSSLX509StoreCtx;
 import java.util.Arrays;
 import java.util.List;
+import java.security.cert.X509Certificate;
+import java.security.cert.CertificateException;
 import javax.net.ssl.SSLException;
 import javax.net.ssl.SSLParameters;
+import javax.net.ssl.X509TrustManager;
 import javax.net.ssl.SSLHandshakeException;
+import java.io.IOException;
 
 /**
  * This is a helper function to account for similar methods between SSLSocket
@@ -41,10 +48,10 @@ import javax.net.ssl.SSLHandshakeException;
 public class WolfSSLEngineHelper {
     private final WolfSSLSession ssl;
     private WolfSSLImplementSSLSession session = null;
-    private SSLParameters params;
+    private WolfSSLParameters params;
     private WolfSSLDebug debug;
     private int port;
-    private String host = null;
+    private String hostname = null;  /* used for session lookup and SNI */
     private WolfSSLAuthStore authStore = null;
     private boolean clientMode;
     private boolean sessionCreation = true;
@@ -58,7 +65,7 @@ public class WolfSSLEngineHelper {
      * @throws WolfSSLException if an exception happens during session creation
      */
     protected WolfSSLEngineHelper(WolfSSLSession ssl, WolfSSLAuthStore store,
-            SSLParameters params) throws WolfSSLException {
+            WolfSSLParameters params) throws WolfSSLException {
         if (params == null || ssl == null || store == null) {
             throw new WolfSSLException("Bad argument");
         }
@@ -67,6 +74,9 @@ public class WolfSSLEngineHelper {
         this.params = params;
         this.authStore = store;
         this.session = new WolfSSLImplementSSLSession(store);
+
+        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+            "created new WolfSSLEngineHelper()");
     }
 
     /**
@@ -75,11 +85,11 @@ public class WolfSSLEngineHelper {
      * @param store main auth store holding session tables and managers
      * @param params default parameters to use on connection
      * @param port port number as hint for resume
-     * @param host host as hint for resume
+     * @param hostname hostname as hint for resume and for default SNI
      * @throws WolfSSLException if an exception happens during session resume
      */
     protected WolfSSLEngineHelper(WolfSSLSession ssl, WolfSSLAuthStore store,
-            SSLParameters params, int port, String host)
+            WolfSSLParameters params, int port, String hostname)
             throws WolfSSLException {
         if (params == null || ssl == null || store == null) {
             throw new WolfSSLException("Bad argument");
@@ -88,14 +98,18 @@ public class WolfSSLEngineHelper {
         this.ssl = ssl;
         this.params = params;
         this.port = port;
-        this.host = host;
+        this.hostname = hostname;
         this.authStore = store;
         this.session = new WolfSSLImplementSSLSession(store);
+
+        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+            "created new WolfSSLEngineHelper(port: " + port +
+            ", hostname: " + hostname + ")");
     }
 
     /* used internally by SSLSocket.connect(SocketAddress) */
-    protected void setHostAndPort(String host, int port) {
-        this.host = host;
+    protected void setHostAndPort(String hostname, int port) {
+        this.hostname = hostname;
         this.port = port;
     }
 
@@ -217,6 +231,21 @@ public class WolfSSLEngineHelper {
         return this.sessionCreation;
     }
 
+    protected void setUseSessionTickets(boolean flag) {
+        this.params.setUseSessionTickets(flag);
+    }
+
+    protected void setAlpnProtocols(byte[] alpnProtos) {
+        this.params.setAlpnProtocols(alpnProtos);
+    }
+
+    protected byte[] getAlpnSelectedProtocol() {
+        if (ssl.handshakeDone()) {
+            return ssl.getAlpnSelected();
+        }
+        return null;
+    }
+
     /********** Calls to transfer over parameter to wolfSSL before connection */
 
     /*transfer over cipher suites right before establishing a connection */
@@ -314,17 +343,130 @@ public class WolfSSLEngineHelper {
                     WolfSSL.SSL_VERIFY_FAIL_IF_NO_PEER_CERT);
         }
 
-        this.ssl.setVerify(mask, null);
+        X509TrustManager tm = authStore.getX509TrustManager();
+        if (tm instanceof com.wolfssl.provider.jsse.WolfSSLTrustX509) {
+            /* use internal peer verification logic */
+            this.ssl.setVerify(mask, null);
+
+        } else {
+            /* not our own TrustManager, set up callback so JSSE can use
+             * TrustManager.checkClientTrusted/checkServerTrusted() */
+            this.ssl.setVerify(WolfSSL.SSL_VERIFY_PEER,
+                               new WolfSSLInternalVerifyCb());
+        }
+    }
+
+    /* sets SNI server names, if set by application in SSLParameters */
+    private void setLocalServerNames() {
+        if (this.clientMode) {
+
+            /* explicitly set if user has set through SSLParameters */
+            List<WolfSSLSNIServerName> names = this.params.getServerNames();
+            if (names != null && names.size() > 0) {
+                /* should only be one server name */
+                WolfSSLSNIServerName sni = names.get(0);
+                if (sni != null) {
+                    this.ssl.useSNI((byte)sni.getType(), sni.getEncoded());
+                }
+            } else {
+                /* otherwise set based on socket hostname if
+                 * 'jsee.enableSNIExtension' java property is set to true */
+                String enableSNI = System.getProperty("jsse.enableSNIExtension", "true");
+                if (enableSNI.equalsIgnoreCase("true")) {
+
+                    WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                        "jsse.enableSNIExtension property set to true, " +
+                        "enabling SNI by default");
+
+                    if (this.hostname != null) {
+                        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                            "setting SNI extension with hostname: " +
+                            this.hostname);
+                        this.ssl.useSNI((byte)0, this.hostname.getBytes());
+                    } else {
+                        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                            "hostname is null, not setting SNI");
+                    }
+                }
+            }
+        }
+    }
+
+    /* Session tickets are enabled in different ways depending on the JDK
+     * implementation we are running on. For Oracle/OpenJDK, the following
+     * system properties enable session tickets and were added in JDK 13:
+     *
+     * -Djdk.tls.client.enableSessionTicketExtension=true
+     * -Djdk.tls.server.enableSessionTicketExtension=true
+     *
+     *  wolfJSSE currently supports client-side session ticket support, but
+     *  not yet enabling of server-side support.
+     *
+     *  On Android, some libraries/frameworks (ex: okhttp) expect to enable
+     *  session tickets per SSLSocket by calling a custom SSLSocket extension
+     *  method called SSLSocket.setUseSessionTickets().
+     *
+     *  Note that for session ticket support in wolfJSSE, underlying native
+     *  wolfSSL must be compiled with session ticket support enabled. This
+     *  is done via "--enable-session-ticket" or "-DHAVE_SESSION_TICKET".
+     */
+    private void setLocalSessionTicket() {
+        if (this.clientMode) {
+
+            boolean enableFlag = this.params.getUseSessionTickets();
+            String enableProperty = System.getProperty(
+                    "jdk.tls.client.enableSessionTicketExtension");
+
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                "SSLSocket.setUseSessionTickets() set to: " +
+                String.valueOf(enableFlag));
+
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                "jdk.tls.client.enableSessionTicketExtension property: " +
+                enableProperty);
+
+            if ((enableFlag == true) ||
+                ((enableProperty != null) &&
+                 (enableProperty.equalsIgnoreCase("true")))) {
+
+                /* enable client-side session ticket support */
+                this.ssl.useSessionTicket();
+
+                WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                    "session tickets enabled for this session");
+
+            } else {
+                WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                    "session tickets not enabled on this session");
+            }
+        }
+    }
+
+    /* Set the ALPN to be used for this session */
+    private void setLocalAlpnProtocols() {
+        byte[] alpnProtos = this.params.getAlpnProtos();
+
+        if (alpnProtos != null) {
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                "Setting ALPN protocols for WOLFSSL session");
+            this.ssl.setAlpnProtos(alpnProtos);
+        } else {
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                "No ALPN protocols set, not setting for this WOLFSSL session");
+        }
     }
 
     private void setLocalParams() {
         this.setLocalCiphers(this.params.getCipherSuites());
         this.setLocalProtocol(this.params.getProtocols());
         this.setLocalAuth();
+        this.setLocalServerNames();
+        this.setLocalSessionTicket();
+        this.setLocalAlpnProtocols();
     }
 
-    /* sets all parameters from SSLParameters into WOLFSSL object and creates
-     * session.
+    /* sets all parameters from WolfSSLParameters into WOLFSSL object and
+     * creates session.
      * Should be called before doHandshake */
     protected void initHandshake() throws SSLException {
         if (!modeSet) {
@@ -332,7 +474,7 @@ public class WolfSSLEngineHelper {
         }
 
         /* create non null session */
-        this.session = this.authStore.getSession(ssl, this.port, this.host,
+        this.session = this.authStore.getSession(ssl, this.port, this.hostname,
             this.clientMode);
 
         if (this.session != null && this.sessionCreation == false &&
@@ -358,8 +500,10 @@ public class WolfSSLEngineHelper {
     }
 
     /* start or continue handshake, return WolfSSL.SSL_SUCCESS or
-     * WolfSSL.SSL_FAILURE */
-    protected int doHandshake() throws SSLException {
+     * WolfSSL.SSL_FAILURE.
+     * isSSLEngine param specifies if this is being called by an SSLEngine
+     * or not. Should not loop on WANT_READ/WRITE for SSLEngine */
+    protected int doHandshake(int isSSLEngine) throws SSLException {
         if (!modeSet) {
             throw new SSLException("setUseClientMode has not been called");
         }
@@ -389,18 +533,30 @@ public class WolfSSLEngineHelper {
             this.session = this.authStore.getSession(ssl);
         }
 
-        if (this.clientMode) {
-            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
-                    "calling native wolfSSL_connect()");
-            return this.ssl.connect();
+        int ret, err;
 
-        } else {
-            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
-                        "calling native wolfSSL_accept()");
-            return this.ssl.accept();
-        }
+        do {
+            /* call connect() or accept() to do handshake, looping on
+             * WANT_READ/WANT_WRITE errors in case underlying Socket is
+             * non-blocking */
+            if (this.clientMode) {
+                WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                        "calling native wolfSSL_connect()");
+                ret = this.ssl.connect();
+
+            } else {
+                WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                            "calling native wolfSSL_accept()");
+                ret = this.ssl.accept();
+            }
+            err = ssl.getError(ret);
+
+        } while (ret != WolfSSL.SSL_SUCCESS && isSSLEngine == 0 &&
+                 (err == WolfSSL.SSL_ERROR_WANT_READ ||
+                  err == WolfSSL.SSL_ERROR_WANT_WRITE));
+
+        return ret;
     }
-
 
     /**
      * Saves session on connection close for resumption
@@ -411,37 +567,79 @@ public class WolfSSLEngineHelper {
         }
     }
 
-    /**
-     * Creates a new SSLPArameters class with the same settings as the one
-     * passed in.
-     *
-     * @param in SSLParameters settings to copy
-     * @return new parameters object holding same settings as "in"
-     */
-    protected static SSLParameters decoupleParams(SSLParameters in) {
-        SSLParameters ret = new SSLParameters();
+    /* Internal verify callback. This is used when a user registers a
+     * TrustManager which is NOT com.wolfssl.provider.jsse.WolfSSLTrustManager
+     * and is used to call TrustManager checkClientTrusted() or
+     * checkServerTrusted(). If wolfJSSE TrustManager is used, native wolfSSL
+     * does certificate verification internally. */
+    public class WolfSSLInternalVerifyCb implements WolfSSLVerifyCallback {
+        public int verifyCallback(int preverify_ok, long x509StorePtr) {
 
-        ret.setCipherSuites(in.getCipherSuites());
-        ret.setProtocols(in.getProtocols());
+            X509TrustManager tm = authStore.getX509TrustManager();
+            WolfSSLCertificate[] certs = null;
+            X509Certificate[] x509certs = null;
+            String authType = null;
 
-        ret.setNeedClientAuth(in.getNeedClientAuth());
-        if (!ret.getNeedClientAuth()) {
-            ret.setWantClientAuth(in.getWantClientAuth());
+            if (preverify_ok == 1) {
+                WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                        "Native wolfSSL peer verification passed");
+            } else {
+                WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                        "WARNING: Native wolfSSL peer verification failed!");
+            }
+
+            try {
+                /* get WolfSSLCertificate[] from x509StorePtr */
+                WolfSSLX509StoreCtx store =
+                    new WolfSSLX509StoreCtx(x509StorePtr);
+                certs = store.getCerts();
+
+            } catch (WolfSSLException e) {
+                /* failed to get certs from native, give app null array */
+                certs = null;
+            }
+
+            if (certs != null && certs.length > 0) {
+                try {
+                    /* Convert WolfSSLCertificate[] to X509Certificate[] */
+                    x509certs = new X509Certificate[certs.length];
+                    for (int i = 0; i < certs.length; i++) {
+                        x509certs[i] = certs[i].getX509Certificate();
+                    }
+                } catch (CertificateException | IOException ce) {
+                    /* failed to get cert array, give app null array */
+                    x509certs = null;
+                }
+
+                /* get authType, use first cert */
+                String sigType = certs[0].getSignatureType();
+                if (sigType.contains("RSA")) {
+                    authType = "RSA";
+                } else if (sigType.contains("ECDSA")) {
+                    authType = "ECDSA";
+                } else if (sigType.contains("DSA")) {
+                    authType = "DSA";
+                } else if (sigType.contains("ED25519")) {
+                    authType = "ED25519";
+                }
+            }
+
+
+            try {
+                /* poll TrustManager for cert verification, should throw
+                 * CertificateException if verification fails */
+                if (clientMode) {
+                    tm.checkServerTrusted(x509certs, authType);
+                } else {
+                    tm.checkClientTrusted(x509certs, authType);
+                }
+            } catch (Exception e) {
+                /* TrustManager rejected certificate, not valid */
+                return 0;
+            }
+
+            /* continue handshake, verification succeeded */
+            return 1;
         }
-
-        /* Supported by newer version of SSLParameters but to build with API 23
-         * these are currently commented out
-        ret.setAlgorithmConstraints(in.getAlgorithmConstraints());
-        ret.setApplicationProtocols(in.getApplicationProtocols());
-        ret.setEnableRetransmissions(in.getEnableRetransmissions());
-        ret.setEndpointIdentificationAlgorithm(
-            in.getEndpointIdentificationAlgorithm());
-        ret.setMaximumPacketSize(in.getMaximumPacketSize());
-        ret.setSNIMatchers(in.getSNIMatchers());
-        ret.setServerNames(in.getServerNames());
-        ret.setUseCipherSuitesOrder(in.getUseCipherSuitesOrder());
-        */
-
-        return ret;
     }
 }

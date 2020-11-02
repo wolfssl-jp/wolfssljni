@@ -61,7 +61,7 @@ public class WolfSSLSessionTest {
         System.out.println("WolfSSLImplementSSLSession Class");
 
         /* install wolfJSSE provider at runtime */
-        Security.addProvider(new WolfSSLProvider());
+        Security.insertProviderAt(new WolfSSLProvider(), 1);
 
         Provider p = Security.getProvider("wolfJSSE");
         assertNotNull(p);
@@ -382,10 +382,13 @@ public class WolfSSLSessionTest {
         session = client.getSession();
         context = session.getSessionContext();
 
-        context.setSessionTimeout(100);
-        if (context.getSessionTimeout() != 100) {
-            error("\t\t... failed");
-            fail("failed to set session timeout");
+        if (!session.getProtocol().equals("TLSv1.3")) {
+            /* TLSv1.3 uses session tickets */
+            context.setSessionTimeout(100);
+            if (context.getSessionTimeout() != 100) {
+                error("\t\t... failed");
+                fail("failed to set session timeout");
+            }
         }
 
         /* @TODO difference in cache size for SunJSSE vs wolfJSSE  0 vs 33 */

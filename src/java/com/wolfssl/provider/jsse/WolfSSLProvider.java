@@ -48,6 +48,16 @@ public final class WolfSSLProvider extends Provider {
                 "Failed to initialize native wolfSSL library");
         }
 
+<<<<<<< HEAD
+=======
+        /* enable native wolfSSL debug logging, native wolfSSL must be
+         * compiled with --enable-debug */
+        String wolfsslDebug = System.getProperty("wolfssl.debug");
+        if ((wolfsslDebug != null) && (wolfsslDebug.equalsIgnoreCase("true"))) {
+            WolfSSL.debuggingON();
+        }
+
+>>>>>>> 175f4b5a7434d506fdfbbaa314806fe5ad3e40a5
         /* Key Factory */
         put("KeyManagerFactory.X509",
                 "com.wolfssl.provider.jsse.WolfSSLKeyManager");
@@ -71,12 +81,16 @@ public final class WolfSSLProvider extends Provider {
             put("SSLContext.TLSv1.3",
                     "com.wolfssl.provider.jsse.WolfSSLContext$TLSV13_Context");
         }
+        put("SSLContext.SSL",
+                "com.wolfssl.provider.jsse.WolfSSLContext$TLSV23_Context");
         put("SSLContext.TLS",
                 "com.wolfssl.provider.jsse.WolfSSLContext$TLSV23_Context");
         put("SSLContext.DEFAULT",
                 "com.wolfssl.provider.jsse.WolfSSLContext$DEFAULT_Context");
 
         /* Trust Factory */
+        put("TrustManagerFactory.PKIX",
+                "com.wolfssl.provider.jsse.WolfSSLTrustManager");
         put("TrustManagerFactory.X509",
                 "com.wolfssl.provider.jsse.WolfSSLTrustManager");
         put("TrustManagerFactory.SunX509",

@@ -28,6 +28,7 @@ import static org.junit.Assert.*;
 
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.net.ConnectException;
 
 import com.wolfssl.WolfSSL;
 import com.wolfssl.WolfSSLContext;
@@ -63,7 +64,7 @@ public class WolfSSLSessionTest {
         cliCert = WolfSSLTestCommon.getPath(cliCert);
         cliKey = WolfSSLTestCommon.getPath(cliKey);
         caCert = WolfSSLTestCommon.getPath(caCert);
-        
+
         test_WolfSSLSession_new();
         test_WolfSSLSession_useCertificateFile();
         test_WolfSSLSession_usePrivateKeyFile();
@@ -73,10 +74,13 @@ public class WolfSSLSessionTest {
         test_WolfSSLSession_usePskIdentityHint();
         test_WolfSSLSession_getPskIdentityHint();
         test_WolfSSLSession_getPskIdentity();
+        test_WolfSSLSession_useSessionTicket();
         test_WolfSSLSession_timeout();
         test_WolfSSLSession_status();
+        test_WolfSSLSession_useSNI();
         test_WolfSSLSession_freeSSL();
         test_WolfSSLSession_UseAfterFree();
+        test_WolfSSLSession_getSessionID();
     }
 
     public void test_WolfSSLSession_new() {
@@ -320,6 +324,22 @@ public class WolfSSLSessionTest {
         System.out.println("\t\t... passed");
     }
 
+    public void test_WolfSSLSession_useSessionTicket() {
+        System.out.print("\tuseSessionTicket()");
+        try {
+            int ret = ssl.useSessionTicket();
+            if (ret != WolfSSL.SSL_SUCCESS &&
+                ret != WolfSSL.NOT_COMPILED_IN) {
+                System.out.println("\t\t... failed");
+                fail("useSessionTicket failed");
+            }
+        } catch (IllegalStateException e) {
+            System.out.println("\t\t... failed");
+            e.printStackTrace();
+        }
+        System.out.println("\t\t... passed");
+    }
+
     public void test_WolfSSLSession_getPskIdentity() {
         System.out.print("\tgetPskIdentity()");
         try {
@@ -330,7 +350,7 @@ public class WolfSSLSessionTest {
         }
         System.out.println("\t\t... passed");
     }
-    
+
     public void test_WolfSSLSession_timeout() {
 
         System.out.print("\ttimeout()");
@@ -349,7 +369,23 @@ public class WolfSSLSessionTest {
         }
         System.out.println("\t\t\t... passed");
     }
-    
+
+    public void test_WolfSSLSession_useSNI() {
+
+        int ret;
+        String sniHostName = "www.example.com";
+
+        System.out.print("\tuseSNI()");
+        ret = ssl.useSNI((byte)0, sniHostName.getBytes());
+        if (ret == WolfSSL.NOT_COMPILED_IN) {
+            System.out.println("\t\t\t... skipped");
+        } else if (ret != WolfSSL.SSL_SUCCESS) {
+            System.out.println("\t\t\t... failed");
+        } else {
+            System.out.println("\t\t\t... passed");
+        }
+    }
+
     public void test_WolfSSLSession_freeSSL() {
 
         System.out.print("\tfreeSSL()");
@@ -365,7 +401,7 @@ public class WolfSSLSessionTest {
 
     public void test_WolfSSLSession_UseAfterFree() {
 
-        int ret;
+        int ret, err;
         WolfSSL sslLib = null;
         WolfSSLContext sslCtx = null;
         WolfSSLSession ssl = null;
@@ -390,7 +426,13 @@ public class WolfSSLSessionTest {
             }
 
             /* successful connection test */
-            ret = ssl.connect();
+            do {
+                ret = ssl.connect();
+                err = ssl.getError(ret);
+            } while (ret != WolfSSL.SSL_SUCCESS &&
+                   (err == WolfSSL.SSL_ERROR_WANT_READ ||
+                    err == WolfSSL.SSL_ERROR_WANT_WRITE));
+
             if (ret != WolfSSL.SSL_SUCCESS) {
                 ssl.freeSSL();
                 sslCtx.free();
@@ -400,7 +442,7 @@ public class WolfSSLSessionTest {
             ssl.freeSSL();
             sslCtx.free();
 
-        } catch (UnknownHostException e) {
+        } catch (UnknownHostException | ConnectException e) {
             /* skip if no Internet connection */
             System.out.println("\t\t... skipped");
             return;
@@ -423,6 +465,80 @@ public class WolfSSLSessionTest {
          * exception thrown */
         System.out.println("\t\t... failed");
         fail("WolfSSLSession was able to be used after freed");
+    }
+
+    public void test_WolfSSLSession_getSessionID() {
+
+        int ret, err;
+        WolfSSL sslLib = null;
+        WolfSSLContext sslCtx = null;
+        WolfSSLSession ssl = null;
+        Socket sock = null;
+        byte[] sessionID = null;
+
+        System.out.print("\tTesting getSessionID()");
+
+        try {
+
+            /* setup library, context, session, socket */
+            sslLib = new WolfSSL();
+            sslCtx = new WolfSSLContext(WolfSSL.TLSv1_2_ClientMethod());
+            sslCtx.setVerify(WolfSSL.SSL_VERIFY_NONE, null);
+            ssl = new WolfSSLSession(sslCtx);
+
+            sessionID = ssl.getSessionID();
+            if (sessionID == null || sessionID.length != 0) {
+                /* sessionID array should not be null, but should be empty */
+                ssl.freeSSL();
+                sslCtx.free();
+                fail("Session ID should be empty array before connection");
+            }
+
+            sock = new Socket(exampleHost, examplePort);
+            ret = ssl.setFd(sock);
+            if (ret != WolfSSL.SSL_SUCCESS) {
+                ssl.freeSSL();
+                sslCtx.free();
+                fail("Failed to set file descriptor");
+            }
+
+            /* successful connection test */
+            do {
+                ret = ssl.connect();
+                err = ssl.getError(ret);
+            } while (ret != WolfSSL.SSL_SUCCESS &&
+                   (err == WolfSSL.SSL_ERROR_WANT_READ ||
+                    err == WolfSSL.SSL_ERROR_WANT_WRITE));
+
+            if (ret != WolfSSL.SSL_SUCCESS) {
+                ssl.freeSSL();
+                sslCtx.free();
+                fail("Failed WolfSSL.connect() to " + exampleHost);
+            }
+
+            sessionID = ssl.getSessionID();
+            if (sessionID == null || sessionID.length == 0) {
+                /* session ID should not be null or zero length */
+                ssl.freeSSL();
+                sslCtx.free();
+                fail("Session ID should not be null or 0 length " +
+                     "after connection");
+            }
+            ssl.freeSSL();
+            sslCtx.free();
+
+        } catch (UnknownHostException | ConnectException e) {
+            /* skip if no Internet connection */
+            System.out.println("\t\t... skipped");
+            return;
+
+        } catch (Exception e) {
+            System.out.println("\t\t... failed");
+            e.printStackTrace();
+            return;
+        }
+
+        System.out.println("\t\t... passed");
     }
 }
 

@@ -44,6 +44,7 @@ import javax.net.ssl.X509TrustManager;
 import com.wolfssl.WolfSSL;
 import com.wolfssl.WolfSSLException;
 import com.wolfssl.WolfSSLJNIException;
+import com.wolfssl.provider.jsse.WolfSSLAuthStore;
 import com.wolfssl.provider.jsse.WolfSSLAuthStore.TLS_VERSION;
 
 /**
@@ -55,7 +56,7 @@ public class WolfSSLContext extends SSLContextSpi {
     private TLS_VERSION currentVersion = TLS_VERSION.SSLv23;
     private WolfSSLAuthStore authStore = null;
     private com.wolfssl.WolfSSLContext ctx = null;
-    private SSLParameters params = null;
+    private WolfSSLParameters params = null;
 
     private WolfSSLContext(TLS_VERSION version) {
         this.currentVersion = version;
@@ -63,10 +64,9 @@ public class WolfSSLContext extends SSLContextSpi {
 
     private void createCtx() throws WolfSSLException {
         long method;
-        WolfSSLCustomUser ctxAttr = new WolfSSLCustomUser();
 
-        ctxAttr = ctxAttr.GetCtxAttributes(this.currentVersion,
-                                           WolfSSL.getCiphersIana());
+        WolfSSLCustomUser ctxAttr = WolfSSLCustomUser.GetCtxAttributes
+                          (this.currentVersion, WolfSSL.getCiphersIana());
 
         if(ctxAttr.version == TLS_VERSION.TLSv1   ||
            ctxAttr.version == TLS_VERSION.TLSv1_1 ||
@@ -79,27 +79,37 @@ public class WolfSSLContext extends SSLContextSpi {
                 "Invalid SSL/TLS protocol version");
         }
 
+        method = WolfSSL.NOT_COMPILED_IN;
         switch (this.currentVersion) {
             case TLSv1:
                 method = WolfSSL.TLSv1_Method();
+                WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                    "creating WolfSSLContext with TLSv1");
                 break;
             case TLSv1_1:
                 method = WolfSSL.TLSv1_1_Method();
+                WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                    "creating WolfSSLContext with TLSv1_1");
                 break;
             case TLSv1_2:
                 method = WolfSSL.TLSv1_2_Method();
+                WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                    "creating WolfSSLContext with TLSv1_2");
                 break;
             case TLSv1_3:
                 method = WolfSSL.TLSv1_3_Method();
+                WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                    "creating WolfSSLContext with TLSv1_3");
                 break;
             case SSLv23:
                 method = WolfSSL.SSLv23_Method();
+                WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                    "creating WolfSSLContext with SSLv23");
                 break;
             default:
                 throw new IllegalArgumentException(
                     "Invalid SSL/TLS protocol version");
         }
-
 
         if (method == WolfSSL.NOT_COMPILED_IN) {
             throw new IllegalArgumentException("Protocol version not " +
@@ -125,11 +135,12 @@ public class WolfSSLContext extends SSLContextSpi {
         }
 
         /* auto-populate enabled protocols with supported ones */
-        params.setProtocols(WolfSSL.getProtocols());
+        params.setProtocols(this.getProtocolsMask(ctxAttr.noOptions));
     }
 
     private void LoadTrustedRootCerts() {
 
+        int ret = 0;
         int loadedCACount = 0;
 
         /* extract root certs from X509TrustManager */
@@ -140,6 +151,9 @@ public class WolfSSLContext extends SSLContextSpi {
                     "internal TrustManager is null, no CAs to load");
             return;
         }
+
+        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                "Using X509TrustManager: " + tm.toString());
 
         X509Certificate[] caList =  tm.getAcceptedIssuers();
         if (caList == null) {
@@ -153,10 +167,15 @@ public class WolfSSLContext extends SSLContextSpi {
             try {
                 byte[] derCert = caList[i].getEncoded();
 
-                ctx.loadVerifyBuffer(derCert, derCert.length,
-                    WolfSSL.SSL_FILETYPE_ASN1);
+                ret = ctx.loadVerifyBuffer(derCert, derCert.length,
+                                           WolfSSL.SSL_FILETYPE_ASN1);
 
-                loadedCACount++;
+                if (ret == WolfSSL.SSL_SUCCESS) {
+                    loadedCACount++;
+                } else {
+                    /* skip loading on failure, move to next */
+                    continue;
+                }
 
             } catch (CertificateEncodingException ce) {
                 /* skip loading if encoding error is encountered */
@@ -191,12 +210,18 @@ public class WolfSSLContext extends SSLContextSpi {
 
         /* We only load keys from algorithms enabled in native wolfSSL,
          * and in the priority order of ECC first, then RSA. JDK 1.7.0_201
-         * has a bug that causes PrivateKey.getEncoded() to fail for EC keys.
-         * This has been fixed in later JDK versions, but skip adding EC
-         * here if we're running on OpenJDK 1.7.0_201. */
+         * and 1.7.0_171 have a bug that causes PrivateKey.getEncoded() to
+         * fail for EC keys. This has been fixed in later JDK versions,
+         * but skip adding EC here if we're running on those versions . */
         ArrayList<String> keyAlgos = new ArrayList<String>();
+<<<<<<< HEAD
         if (WolfSSL.EccEnabled() && 
             (!javaVersion.equals("1.7.0_201") && !javaVersion.equals("1.7.0_171"))) {
+=======
+        if (WolfSSL.EccEnabled() &&
+            (!javaVersion.equals("1.7.0_201") &&
+             !javaVersion.equals("1.7.0_171"))) {
+>>>>>>> 175f4b5a7434d506fdfbbaa314806fe5ad3e40a5
             keyAlgos.add("EC");
         }
         if (WolfSSL.RsaEnabled()) {
@@ -252,6 +277,7 @@ public class WolfSSLContext extends SSLContextSpi {
                 chainLength++;
             }
             byte certChain[] = certStream.toByteArray();
+            certStream.close();
 
             ret = ctx.useCertificateChainBufferFormat(certChain,
                 certChain.length, WolfSSL.SSL_FILETYPE_ASN1);
@@ -289,9 +315,12 @@ public class WolfSSLContext extends SSLContextSpi {
     protected void engineInit(KeyManager[] km, TrustManager[] tm,
         SecureRandom sr) throws KeyManagementException {
 
+        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+            "entered engineInit()");
+
         try {
             authStore = new WolfSSLAuthStore(km, tm, sr, currentVersion);
-            params = new SSLParameters();
+            params = new WolfSSLParameters();
             createCtx();
 
         } catch (IllegalArgumentException iae) {
@@ -311,7 +340,10 @@ public class WolfSSLContext extends SSLContextSpi {
     protected SSLSocketFactory engineGetSocketFactory()
         throws IllegalStateException {
 
-        if (authStore == null) {
+        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+            "entered engineGetSocketFactory()");
+
+        if (this.ctx == null || this.authStore == null) {
             throw new IllegalStateException("SSLContext must be initialized " +
                 "before use, please call init()");
         }
@@ -328,7 +360,10 @@ public class WolfSSLContext extends SSLContextSpi {
     protected SSLServerSocketFactory engineGetServerSocketFactory()
         throws IllegalStateException {
 
-        if (authStore == null) {
+        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+            "entered engineGetServerSocketFactory()");
+
+        if (this.ctx == null || this.authStore == null) {
             throw new IllegalStateException("SSLContext must be initialized " +
                 "before use, please call init()");
         }
@@ -346,7 +381,10 @@ public class WolfSSLContext extends SSLContextSpi {
     protected SSLEngine engineCreateSSLEngine()
         throws IllegalStateException {
 
-        if (authStore == null) {
+        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+            "entered engineCreateSSLEngine()");
+
+        if (this.ctx == null || this.authStore == null) {
             throw new IllegalStateException("SSLContext must be initialized " +
                 "before use, please call init()");
         }
@@ -370,7 +408,10 @@ public class WolfSSLContext extends SSLContextSpi {
     protected SSLEngine engineCreateSSLEngine(String host, int port)
         throws IllegalStateException {
 
-        if (authStore == null) {
+        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+            "entered engineCreateSSLEngine(String host, int port)");
+
+        if (this.ctx == null || this.authStore == null) {
             throw new IllegalStateException("SSLContext must be initialized " +
                 "before use, please call init()");
         }
@@ -392,6 +433,10 @@ public class WolfSSLContext extends SSLContextSpi {
      */
     @Override
     protected SSLSessionContext engineGetServerSessionContext() {
+
+        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+            "entered engineGetServerSessionContext()");
+
         throw new UnsupportedOperationException("Not supported by wolfJSSE");
     }
 
@@ -404,6 +449,10 @@ public class WolfSSLContext extends SSLContextSpi {
      */
     @Override
     protected SSLSessionContext engineGetClientSessionContext() {
+
+        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+            "entered engineGetClientSessionContext()");
+
         throw new UnsupportedOperationException("Not supported by wolfJSSE");
     }
 
@@ -412,7 +461,15 @@ public class WolfSSLContext extends SSLContextSpi {
      */
     @Override
     protected SSLParameters engineGetDefaultSSLParameters() {
+<<<<<<< HEAD
         return WolfSSLEngineHelper.decoupleParams(this.params);
+=======
+
+        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+            "entered engineGetDefaultSSLParameters()");
+
+        return WolfSSLParametersHelper.decoupleParams(this.params);
+>>>>>>> 175f4b5a7434d506fdfbbaa314806fe5ad3e40a5
     }
 
     /**
@@ -421,7 +478,15 @@ public class WolfSSLContext extends SSLContextSpi {
      */
     @Override
     protected SSLParameters engineGetSupportedSSLParameters() {
+<<<<<<< HEAD
         return WolfSSLEngineHelper.decoupleParams(this.params);
+=======
+
+        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+            "entered engineGetSupportedSSLParameters()");
+
+        return WolfSSLParametersHelper.decoupleParams(this.params);
+>>>>>>> 175f4b5a7434d506fdfbbaa314806fe5ad3e40a5
     }
 
     /* used internally by SSLSocketFactory() */
@@ -430,43 +495,90 @@ public class WolfSSLContext extends SSLContextSpi {
     }
 
     /* used internally by SSLSocketFactory() */
+<<<<<<< HEAD
     protected SSLParameters getInternalSSLParams() {
         return this.params;
     }
 
+=======
+    protected WolfSSLParameters getInternalSSLParams() {
+        return this.params;
+    }
+
+    /* used internally by SSLSocketFactory() */
+    protected com.wolfssl.WolfSSLContext getInternalWolfSSLContext() {
+        return this.ctx;
+    }
+
+    @SuppressWarnings("deprecation")
+    @Override
+    protected void finalize() throws Throwable {
+        if (this.ctx != null) {
+            this.ctx = null;
+        }
+        super.finalize();
+    }
+
+    public String[] getProtocolsMask(long noOpt) {
+        if (ctx != null) {
+            ctx.setOptions(noOpt);
+        }
+        return WolfSSL.getProtocolsMask(noOpt);
+    }
+
+>>>>>>> 175f4b5a7434d506fdfbbaa314806fe5ad3e40a5
     public static final class TLSV1_Context extends WolfSSLContext {
         public TLSV1_Context() {
             super(TLS_VERSION.TLSv1);
+
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                "creating new WolfSSLContext using TLSV1_Context");
         }
     }
 
     public static final class TLSV11_Context extends WolfSSLContext {
         public TLSV11_Context() {
             super(TLS_VERSION.TLSv1_1);
+
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                "creating new WolfSSLContext using TLSV11_Context");
         }
     }
 
     public static final class TLSV12_Context extends WolfSSLContext {
         public TLSV12_Context() {
             super(TLS_VERSION.TLSv1_2);
+
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                "creating new WolfSSLContext using TLSV12_Context");
         }
     }
 
     public static final class TLSV13_Context extends WolfSSLContext {
         public TLSV13_Context() {
             super(TLS_VERSION.TLSv1_3);
+
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                "creating new WolfSSLContext using TLSV13_Context");
         }
     }
 
     public static final class TLSV23_Context extends WolfSSLContext {
         public TLSV23_Context() {
             super(TLS_VERSION.SSLv23);
+
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                "creating new WolfSSLContext using TLSV23_Context");
         }
     }
 
     public static final class DEFAULT_Context extends WolfSSLContext {
         public DEFAULT_Context() {
             super(TLS_VERSION.SSLv23);
+
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                "creating new WolfSSLContext using DEFAULT_Context");
+
             try {
                 this.engineInit(null, null, null);
             } catch (Exception e) {

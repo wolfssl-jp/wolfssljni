@@ -25,28 +25,30 @@ import java.io.IOException;
 import java.net.InetAddress;
 import javax.net.ssl.SSLServerSocketFactory;
 import java.net.ServerSocket;
-import javax.net.ssl.SSLParameters;
 
 import com.wolfssl.WolfSSL;
 import com.wolfssl.WolfSSLContext;
 
 /**
  * wolfSSL implementation of SSLServerSocketFactory
- * 
+ *
  * @author wolfSSL
  */
 public class WolfSSLServerSocketFactory extends SSLServerSocketFactory {
 
     private WolfSSLAuthStore authStore = null;
     private WolfSSLContext ctx = null;
-    private SSLParameters params;
+    private WolfSSLParameters params;
 
     public WolfSSLServerSocketFactory(com.wolfssl.WolfSSLContext ctx,
-            WolfSSLAuthStore authStore, SSLParameters params) {
+            WolfSSLAuthStore authStore, WolfSSLParameters params) {
         super();
         this.ctx = ctx;
         this.authStore = authStore;
         this.params = params;
+
+        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+            "creating new WolfSSLServerSocketFactory");
     }
 
     /**
@@ -56,6 +58,10 @@ public class WolfSSLServerSocketFactory extends SSLServerSocketFactory {
      */
     @Override
     public String[] getDefaultCipherSuites() {
+
+        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+            "entered getDefaultCipherSuites()");
+
         return WolfSSL.getCiphers();
     }
 
@@ -66,6 +72,10 @@ public class WolfSSLServerSocketFactory extends SSLServerSocketFactory {
      */
     @Override
     public String[] getSupportedCipherSuites() {
+
+        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+            "entered getSupportedCipherSuites()");
+
         return getDefaultCipherSuites();
     }
 
@@ -77,6 +87,10 @@ public class WolfSSLServerSocketFactory extends SSLServerSocketFactory {
      */
     @Override
     public ServerSocket createServerSocket() throws IOException {
+
+        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+            "entered createServerSocket()");
+
         return new WolfSSLServerSocket(ctx, authStore, params);
     }
 
@@ -90,6 +104,10 @@ public class WolfSSLServerSocketFactory extends SSLServerSocketFactory {
      */
     @Override
     public ServerSocket createServerSocket(int port) throws IOException {
+
+        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+            "entered createServerSocket(port: " + port + ")");
+
         return new WolfSSLServerSocket(ctx, authStore, params, port);
     }
 
@@ -106,6 +124,11 @@ public class WolfSSLServerSocketFactory extends SSLServerSocketFactory {
     @Override
     public ServerSocket createServerSocket(int port, int backlog)
         throws IOException {
+
+        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+            "entered createServerSocket(port: " + port +
+            ", backlog: " + backlog + ")");
+
         return new WolfSSLServerSocket(ctx, authStore, params, port, backlog);
     }
 
@@ -123,6 +146,11 @@ public class WolfSSLServerSocketFactory extends SSLServerSocketFactory {
     @Override
     public ServerSocket createServerSocket(int port, int backlog,
         InetAddress ifAddress) throws IOException {
+
+        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+            "entered createServerSocket(port: " + port +
+            ", backlog: " + backlog + ", InetAddress)");
+
         return new WolfSSLServerSocket(ctx, authStore, params, port,
             backlog, ifAddress);
     }

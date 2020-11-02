@@ -40,6 +40,7 @@ import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.TrustManagerFactory;
 import java.net.Socket;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.SocketException;
 import java.security.Security;
 import java.security.Provider;
@@ -90,7 +91,7 @@ public class WolfSSLSocketFactoryTest {
         System.out.println("WolfSSLSocketFactory Class");
 
         /* install wolfJSSE provider at runtime */
-        Security.addProvider(new WolfSSLProvider());
+        Security.insertProviderAt(new WolfSSLProvider(), 1);
 
         Provider p = Security.getProvider("wolfJSSE");
         assertNotNull(p);
@@ -149,6 +150,28 @@ public class WolfSSLSocketFactoryTest {
             SSLSocketFactory sf = ctx.getSocketFactory();
             sockFactories.add(sf);
         }
+
+        /* add default SSLSocketFactory to tests */
+        SSLSocketFactory sfDefault =
+            new com.wolfssl.provider.jsse.WolfSSLSocketFactory();
+        sockFactories.add(sfDefault);
+    }
+
+    @Test
+    public void testUseDefaultSSLSocketFactory()
+        throws NoSuchProviderException, NoSuchAlgorithmException {
+
+        System.out.print("\tgetDefault()");
+
+        SSLSocketFactory sf =
+            new com.wolfssl.provider.jsse.WolfSSLSocketFactory();
+
+        if (sf == null) {
+            System.out.println("\t\t\t... failed");
+            fail("SSLSocketFactory.getDefault() failed");
+        }
+
+        System.out.println("\t\t\t... passed");
     }
 
     @Test
@@ -205,6 +228,18 @@ public class WolfSSLSocketFactoryTest {
             Socket s = null;
             InputStream in = null;
 
+            /* test that we can connect to www.example.com */
+            try {
+                Socket testConn = new Socket();
+                testConn.connect(new InetSocketAddress(addrStr, port));
+                testConn.close();
+            } catch (Exception e) {
+                /* unable to connect, skip test */
+                System.out.println("\t\t\t... skipped");
+                return;
+            }
+
+            /* set up InetAddress for www.example.com */
             try {
                 addr = InetAddress.getByName("www.example.com");
             } catch (UnknownHostException e) {
@@ -293,6 +328,7 @@ public class WolfSSLSocketFactoryTest {
             }
             catch (Exception e) {
                 System.out.println("\t\t\t... failed");
+                throw e;
             }
 
             /* bad arguments */

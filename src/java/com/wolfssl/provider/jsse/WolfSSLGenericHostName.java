@@ -1,4 +1,4 @@
-/* VerifyCallback.java
+/* WolfSSLGenericHostName.java
  *
  * Copyright (C) 2006-2020 wolfSSL Inc.
  *
@@ -18,20 +18,16 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA
  */
+package com.wolfssl.provider.jsse;
 
-import com.wolfssl.WolfSSLVerifyCallback;
-
-public class VerifyCallback implements WolfSSLVerifyCallback {
-
-    public int verifyCallback(int preverify_ok, long x509StorePtr) {
-        System.out.println("Hello from Java verify callback!");
-        if (preverify_ok != 1) {
-            System.out.println("peer cert verification failed");
-            return 0;
-        } else {
-            /* wolfSSL verification passed successfully, continue */
-            return 1;
-        }
+/**
+ * Concrete class representing a generic host name, used with SNI and
+ * WolfSSLSNIServerName usage areas.
+ */
+public class WolfSSLGenericHostName extends WolfSSLSNIServerName
+{
+    WolfSSLGenericHostName(int type, byte[] encoded) {
+        super(type, encoded);
     }
 }
 

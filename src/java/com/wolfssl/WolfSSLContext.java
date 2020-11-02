@@ -40,7 +40,7 @@ import com.wolfssl.WolfSSLJNIException;
 public class WolfSSLContext {
 
     /* internal native WOLFSSL_CTX pointer */
-    private long sslCtxPtr;
+    private long sslCtxPtr = 0;
 
     /* user-registerd I/O callbacks, called by internal WolfSSLContext
      * I/O callback. This is done in order to pass references to
@@ -100,6 +100,9 @@ public class WolfSSLContext {
 
     long getContextPtr()
     {
+        if (this.active == false) {
+            return 0;
+        }
         return sslCtxPtr;
     }
 
@@ -318,6 +321,8 @@ public class WolfSSLContext {
     private native int useCertificateChainFile(long ctx, String file);
     private native void freeContext(long ctx);
     private native void setVerify(long ctx, int mode, WolfSSLVerifyCallback vc);
+    private native long setOptions(long ctx, long op);
+    private native long getOptions(long ctx);
     private native int memsaveCertCache(long ctx, byte[] mem, int sz,
             int[] used);
     private native int memrestoreCertCache(long ctx, byte[] mem, int sz);
@@ -553,6 +558,41 @@ public class WolfSSLContext {
     }
 
     /**
+     * Sets the options to use for the WOLFSSL structure.
+     * Example options are WolfSSL.SSL_OP_NO_SSLv3
+     *
+     *
+     * @param op      bit mask of options to set
+     * @return returns the revised options bit mask on success
+     * @throws IllegalStateException WolfSSLContext has been freed
+     */
+    public long setOptions(long op)
+            throws IllegalStateException {
+
+        if (this.active == false)
+            throw new IllegalStateException("Object has been freed");
+
+        return setOptions(getContextPtr(), op);
+    }
+
+        /**
+     * Gets the options to use for the WOLFSSL structure.
+     * Example options are WolfSSL.SSL_OP_NO_SSLv3
+     *
+     *
+     * @return returns options bit mask on success
+     * @throws IllegalStateException WolfSSLContext has been freed
+     */
+    public long getOptions()
+            throws IllegalStateException {
+
+        if (this.active == false)
+            throw new IllegalStateException("Object has been freed");
+
+        return getOptions(getContextPtr());
+    }
+
+    /**
      * Frees an allocated SSL context.
      * This method decrements the CTX reference count and only frees the
      * context when the reference count has reached zero.
@@ -566,10 +606,11 @@ public class WolfSSLContext {
             throw new IllegalStateException("Object has been freed");
 
         /* free native resources */
-        freeContext(getContextPtr());
+        freeContext(this.sslCtxPtr);
 
         /* free Java resources */
         this.active = false;
+        this.sslCtxPtr = 0;
     }
 
     /**
@@ -1695,8 +1736,11 @@ public class WolfSSLContext {
     protected void finalize() throws Throwable
     {
         if (this.active == true) {
-            /* free resources, set state */
-            this.free();
+            try {
+                this.free();
+            } catch (IllegalStateException e) {
+                /* already freed */
+            }
             this.active = false;
         }
         super.finalize();

@@ -7,6 +7,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+#undef com_wolfssl_WolfSSL_JNI_SESSION_UNAVAILABLE
+#define com_wolfssl_WolfSSL_JNI_SESSION_UNAVAILABLE -10001L
 #undef com_wolfssl_WolfSSL_SSL_ERROR_NONE
 #define com_wolfssl_WolfSSL_SSL_ERROR_NONE 0L
 #undef com_wolfssl_WolfSSL_SSL_FAILURE
@@ -75,6 +77,8 @@ extern "C" {
 #define com_wolfssl_WolfSSL_SSL_ERROR_ZERO_RETURN 6L
 #undef com_wolfssl_WolfSSL_SSL_ERROR_SSL
 #define com_wolfssl_WolfSSL_SSL_ERROR_SSL 85L
+#undef com_wolfssl_WolfSSL_SSL_ERROR_SOCKET_PEER_CLOSED
+#define com_wolfssl_WolfSSL_SSL_ERROR_SOCKET_PEER_CLOSED -397L
 #undef com_wolfssl_WolfSSL_WOLFSSL_CRL_CHECKALL
 #define com_wolfssl_WolfSSL_WOLFSSL_CRL_CHECKALL 1L
 #undef com_wolfssl_WolfSSL_WOLFSSL_OCSP_URL_OVERRIDE
@@ -694,6 +698,14 @@ JNIEXPORT jint JNICALL Java_com_wolfssl_WolfSSL_isEnabledPKCallbacks
  */
 JNIEXPORT jobjectArray JNICALL Java_com_wolfssl_WolfSSL_getProtocols
   (JNIEnv *, jclass);
+
+/*
+ * Class:     com_wolfssl_WolfSSL
+ * Method:    getProtocolsMask
+ * Signature: (J)[Ljava/lang/String;
+ */
+JNIEXPORT jobjectArray JNICALL Java_com_wolfssl_WolfSSL_getProtocolsMask
+  (JNIEnv *, jclass, jlong);
 
 #ifdef __cplusplus
 }
