@@ -53,7 +53,6 @@ public class WolfSSLSocketFactory extends SSLSocketFactory {
     /* This constructor is used when the JSSE call
      * SSLSocketFactory.getDefault() */
     public WolfSSLSocketFactory() {
-        super();
 
         WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
             "created new default WolfSSLSocketFactory");
