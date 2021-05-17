@@ -48,6 +48,7 @@ import javax.security.cert.*;
 public class WolfSSLImplementSSLSession implements SSLSession {
     private WolfSSLSession ssl;
     private final WolfSSLAuthStore authStore;
+    private WolfSSLSessionContext ctx = null;
     private boolean valid;
     private final HashMap<String, Object> binding;
     private final int port;
@@ -70,7 +71,7 @@ public class WolfSSLImplementSSLSession implements SSLSession {
         this.port = port;
         this.host = host;
         this.authStore = params;
-        this.valid = true; /* flag if joining or resuming session is allowed */
+        this.valid = false; /* flag if joining or resuming session is allowed */
         binding = new HashMap<String, Object>();
 
         creation = new Date();
@@ -83,7 +84,7 @@ public class WolfSSLImplementSSLSession implements SSLSession {
         this.port = -1;
         this.host = null;
         this.authStore = params;
-        this.valid = true; /* flag if joining or resuming session is allowed */
+        this.valid = false; /* flag if joining or resuming session is allowed */
         binding = new HashMap<String, Object>();
 
         creation = new Date();
@@ -94,7 +95,7 @@ public class WolfSSLImplementSSLSession implements SSLSession {
         this.port = -1;
         this.host = null;
         this.authStore = params;
-        this.valid = true; /* flag if joining or resuming session is allowed */
+        this.valid = false; /* flag if joining or resuming session is allowed */
         binding = new HashMap<String, Object>();
 
         creation = new Date();
@@ -108,8 +109,16 @@ public class WolfSSLImplementSSLSession implements SSLSession {
         return this.ssl.getSessionID();
     }
 
-    public SSLSessionContext getSessionContext() {
-        return new WolfSSLSessionContext(this, this.ssl);
+    public synchronized SSLSessionContext getSessionContext() {
+        return ctx;
+    }
+
+    /**
+     * Setter function for the SSLSessionContext used with session creation
+     * @param ctx value to set the session context as
+     */
+    protected void setSessionContext(WolfSSLSessionContext ctx) {
+        this.ctx = ctx;
     }
 
     public long getCreationTime() {
@@ -126,6 +135,15 @@ public class WolfSSLImplementSSLSession implements SSLSession {
 
     public boolean isValid() {
         return this.valid;
+    }
+
+    /**
+     * After a connection has been established or on restoring connection the session
+     * is then valid and can be joined or resumed
+     * @param in true/false valid boolean
+     */
+    protected void setValid(boolean in) {
+        this.valid = in;
     }
 
     public void putValue(String name, Object obj) {
@@ -173,7 +191,7 @@ public class WolfSSLImplementSSLSession implements SSLSession {
     }
 
     public String[] getValueNames() {
-         return binding.keySet().toArray(new String[binding.keySet().size()]);
+        return binding.keySet().toArray(new String[binding.keySet().size()]);
     }
 
     public Certificate[] getPeerCertificates()
@@ -350,52 +368,11 @@ public class WolfSSLImplementSSLSession implements SSLSession {
         }
     }
 
-
-    private class WolfSSLSessionContext implements SSLSessionContext {
-        private WolfSSLImplementSSLSession session;
-        private WolfSSLSession sslCtx;
-
-        public WolfSSLSessionContext(WolfSSLImplementSSLSession in,
-                WolfSSLSession ssl) {
-            this.session = in;
-            this.sslCtx = ssl;
-        }
-
-        /* rework as session cache */
-        @Override
-        public SSLSession getSession(byte[] arg0) {
-            return session;
-        }
-
-        @Override
-        public Enumeration<byte[]> getIds() {
-            throw new UnsupportedOperationException("Not supported yet.");
-        }
-
-        @Override
-        public void setSessionTimeout(int in) throws IllegalArgumentException {
-            if (this.sslCtx.setSessTimeout(in) != WolfSSL.SSL_SUCCESS) {
-                throw new IllegalArgumentException();
-            }
-        }
-
-        @Override
-        public int getSessionTimeout() {
-            return (int)this.sslCtx.getSessTimeout();
-        }
-
-        /* set during compile time with wolfSSL */
-        @Override
-        public void setSessionCacheSize(int in)
-            throws IllegalArgumentException {
-            throw new UnsupportedOperationException("Not supported. Cache size "
-                    + "is set at compile time with wolfSSL");
-        }
-
-        @Override
-        public int getSessionCacheSize() {
-            return (int)this.sslCtx.getCacheSize();
-        }
-
+    /**
+     * Sets the native WOLFSSL_SESSION timeout
+     * @param in timeout in seconds
+     */
+    protected void setNativeTimeout(long in) {
+        ssl.setSessTimeout(in);
     }
 }
