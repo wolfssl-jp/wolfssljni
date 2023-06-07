@@ -298,8 +298,6 @@ public class WolfSSLAuthStore {
         toHash = host.concat(Integer.toString(port));
         ses = store.get(toHash.hashCode());
         if (ses == null) {
-            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
-                    "session not found in cache table, creating new");
             /* not found in stored sessions create a new one */
             ses = new WolfSSLImplementSSLSession(ssl, port, host, this);
             ses.setValid(true); /* new sessions marked as valid */
@@ -309,11 +307,15 @@ public class WolfSSLAuthStore {
             else {
                 ses.setSessionContext(clientCtx);
             }
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                    "session not found in cache table, creating new, Session ID: ",
+                    ses.getId(), ses.getId().length);
         }
         else {
-            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
-                    "session found in cache, trying to resume");
             ses.resume(ssl);
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                    "session found in cache, trying to resume, Session ID: ",
+                    ses.getId(), ses.getId().length);
         }
         return ses;
     }

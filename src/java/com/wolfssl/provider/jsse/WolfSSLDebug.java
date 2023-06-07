@@ -80,5 +80,43 @@ public class WolfSSLDebug {
                                cl.getSimpleName() + "] " + string);
         }
     }
+
+    /**
+     * Print out a byte array in hex if debugging is enabled.
+     *
+     * @param cl class this method is being called from
+     * @param tag level of debug message i.e. WolfSSLDebug.INFO
+     * @param label label string to print with hex
+     * @param in byte array to be printed as hex
+     * @param sz number of bytes from in array to be printed
+     */
+    public static synchronized void logHex(Class cl, String tag, String label,
+                                           byte[] in, int sz) {
+        if (DEBUG) {
+            int i = 0, j = 0;
+            int printSz = 0;
+            long tid = Thread.currentThread().getId();
+            String clName = null;
+
+            if (cl == null || in == null || sz == 0) {
+                return;
+            }
+            clName = cl.getSimpleName();
+            printSz = Math.min(in.length, sz);
+
+            System.out.print("[wolfJSSE " + tag + ": TID " + tid + ": " +
+                             clName + "] " + label + " [" + sz + "]: ");
+            for (i = 0; i < printSz; i++) {
+                if ((i % 8) == 0) {
+                    System.out.printf("\n[wolfJSSE " + tag + ": TID " +
+                                      tid + ": " + clName + "] %06X", j * 8);
+                    j++;
+                }
+                System.out.printf(" %02X ", in[i]);
+            }
+            System.out.println("");
+        }
+    }
+}
 }
 
