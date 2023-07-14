@@ -570,9 +570,8 @@ JNIEXPORT jint JNICALL Java_com_wolfssl_WolfSSLSession_connect
         (*jenv)->ExceptionClear(jenv);
         return SSL_FAILURE;
     }
-
     /* get session mutex from SSL app data */
-    appData = (SSLAppData*)wolfSSL_get_app_data(ssl);
+    appData = (SSLAppData *)wolfSSL_get_app_data(ssl);
     if (appData == NULL) {
         return WOLFSSL_FAILURE;
     }
@@ -1090,6 +1089,40 @@ JNIEXPORT jbyteArray JNICALL Java_com_wolfssl_WolfSSLSession_getSessionID
     }
 
     return ret;
+}
+
+JNIEXPORT jint JNICALL Java_com_wolfssl_WolfSSLSession_setServerId(JNIEnv *jenv, jobject obj, jlong sslPtr, jstring id, jint length)
+{
+    byte* svId;
+    int ret = SSL_FAILURE;
+    WOLFSSL* ssl = NULL;
+    (void)obj;
+
+    if (jenv == NULL || sslPtr <= 0 || id == NULL) {
+        return BAD_FUNC_ARG;
+    }
+
+    ssl = (WOLFSSL *)(uintptr_t)sslPtr;
+
+    if (length >= 0) {
+        svId = (byte *)(*jenv)->GetStringUTFChars(jenv, id, 0);
+        if ((*jenv)->ExceptionOccurred(jenv)) {
+            (*jenv)->ExceptionDescribe(jenv);
+            (*jenv)->ExceptionClear(jenv);
+            return SSL_FAILURE;
+        }
+
+        printf("Java_com_wolfssl_WolfSSLSession_setServerID: %lx,  %d, %s\n",
+               (unsigned long)ssl, length, svId);
+
+        /* Set server ID, assuming it is a new session */
+        ret = wolfSSL_SetServerID(ssl, svId, length, 0);
+        if (ret != SSL_SUCCESS)
+            return SSL_FAILURE;
+        else
+            return SSL_SUCCESS;
+    }
+    return SSL_FAILURE;
 }
 
 JNIEXPORT jint JNICALL Java_com_wolfssl_WolfSSLSession_setTimeout

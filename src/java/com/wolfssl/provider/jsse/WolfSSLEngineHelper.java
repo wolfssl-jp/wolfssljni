@@ -516,6 +516,7 @@ public class WolfSSLEngineHelper {
         throws SSLException, SocketTimeoutException {
 
         int ret, err;
+        String serverId;
 
         if (!modeSet) {
             throw new SSLException("setUseClientMode has not been called");
@@ -546,14 +547,23 @@ public class WolfSSLEngineHelper {
             this.session = this.authStore.getSession(ssl);
         }
 
+        if (this.clientMode) {
+            serverId = this.hostname + this.port;
+            ret = this.ssl.setServerId(serverId);
+            if(ret != WolfSSL.SSL_SUCCESS)
+                return WolfSSL.SSL_HANDSHAKE_FAILURE;
+        }
+
         do {
             /* call connect() or accept() to do handshake, looping on
              * WANT_READ/WANT_WRITE errors in case underlying Socket is
              * non-blocking */
             if (this.clientMode) {
+
                 WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
-                        "calling native wolfSSL_connect()");
+                        "doHandshake: alling native wolfSSL_connect()");
                 /* may throw SocketTimeoutException on socket timeout */
+
                 ret = this.ssl.connect(timeout);
 
             } else {

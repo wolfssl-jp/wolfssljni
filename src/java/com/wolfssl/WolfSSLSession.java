@@ -28,6 +28,7 @@ import java.net.SocketTimeoutException;
 
 import com.wolfssl.WolfSSLException;
 import com.wolfssl.WolfSSLJNIException;
+import com.wolfssl.provider.jsse.WolfSSLDebug;
 
 /**
  * Wraps a native WolfSSL session object and contains methods directly related
@@ -199,6 +200,7 @@ public class WolfSSLSession {
     private native int getError(long ssl, int ret);
     private native int setSession(long ssl, long session);
     private native long getSession(long ssl);
+    private native int setServerId(long ssl, String id, int length);
     private native byte[] getSessionID(long session);
     private native int setTimeout(long ssl, long t);
     private native long getTimeout(long ssl);
@@ -409,6 +411,24 @@ public class WolfSSLSession {
             throw new IllegalStateException("Object has been freed");
 
         return setFd(getSessionPtr(), sd, 2);
+    }
+
+    /**
+     * Set serverId to the session.
+     *
+     * @param id Sserver ID.
+     * @return   <code>SSL_SUCCESS</code> on success, otherwise
+     *           <code>SSL_FAILURE</code>.
+     */
+    public int setServerId(String id) throws IllegalStateException {
+
+        if (this.active == false)
+            throw new IllegalStateException("Object has been freed");
+
+        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                "cdoHandshake: setServerId()");
+
+        return setServerId(getSessionPtr(), id, id.length());
     }
 
     /**
