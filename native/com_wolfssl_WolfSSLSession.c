@@ -1112,9 +1112,6 @@ JNIEXPORT jint JNICALL Java_com_wolfssl_WolfSSLSession_setServerId(JNIEnv *jenv,
             return SSL_FAILURE;
         }
 
-        printf("Java_com_wolfssl_WolfSSLSession_setServerID: %lx,  %d, %s\n",
-               (unsigned long)ssl, length, svId);
-
         /* Set server ID, assuming it is a new session */
         ret = wolfSSL_SetServerID(ssl, svId, length, 0);
         if (ret != SSL_SUCCESS)
