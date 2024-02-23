@@ -577,6 +577,14 @@ public class WolfSSLEngineHelper {
                  (err == WolfSSL.SSL_ERROR_WANT_READ ||
                   err == WolfSSL.SSL_ERROR_WANT_WRITE));
 
+        if (this.clientMode == true && this.sessionCreation) {
+            /*
+             * can only add new sessions to the resumption table if session
+             * creation is allowed
+             */
+            this.authStore.addSession(this.session);
+        }
+
         return ret;
     }
 
@@ -584,9 +592,8 @@ public class WolfSSLEngineHelper {
      * Saves session on connection close for resumption
      */
     protected void saveSession() {
-        if (this.session != null && this.session.isValid()) {
+        if (this.session.isValid()) {
             this.session.setResume();
-            this.authStore.addSession(this.session);
         }
     }
 }
