@@ -312,10 +312,34 @@ public class WolfSSLAuthStore {
                     ses.getId(), ses.getId().length);
         }
         else {
-            ses.resume(ssl);
+            /* Remove old entry from table. TLS 1.3 binder changes between
+            * resumptions and stored session should only be used to
+            * resume once. New session structure/object will be cached
+            * after the resumed session completes the handshake, for
+            * subsequent resumption attempts to use. */
+            store.remove(toHash.hashCode());
+
             WolfSSLDebug.logHex(getClass(), WolfSSLDebug.INFO,
                     "session found in cache, trying to resume, Session ID: ",
                     ses.getId(), ses.getId().length);
+
+
+            if (ses.resume(ssl) != WolfSSL.SSL_SUCCESS) {
+                WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                    "native wolfSSL_set_session() failed, " +
+                    "creating new session");
+
+                ses = new WolfSSLImplementSSLSession(ssl, port, host, this);
+                ses.setValid(true);
+
+                if (ssl.getSide() == WolfSSL.WOLFSSL_SERVER_END) {
+                    ses.setSessionContext(serverCtx);
+                }
+                else {
+                    ses.setSessionContext(clientCtx);
+                }
+            }
+
         }
         return ses;
     }

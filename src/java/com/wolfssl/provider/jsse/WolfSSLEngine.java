@@ -246,6 +246,22 @@ public class WolfSSLEngine extends SSLEngine {
             pro += CopyOutPacket(out, status);
         }
         else if (pro == 0) {
+                if(!this.ssl.handshakeDone() || this.toSend != null) {
+                    try {
+                        if(this.getUseClientMode()) {
+                            ret = this.ssl.connect();
+                        } else {
+                            ret = this.ssl.accept();
+                        }
+                        if (ret == WolfSSL.SSL_SUCCESS) {
+                                WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                                    "calling EngineHelper.saveSession()");
+                                EngineHelper.saveSession();
+                        }
+                    } catch (SocketTimeoutException e) {
+                        throw new SSLException(e);
+                    }
+                }
                 /* get buffer size */
                 for (i = ofst; i < ofst + len; i++) {
                     max += in[i].remaining();
@@ -349,33 +365,55 @@ public class WolfSSLEngine extends SSLEngine {
             }
         }
         else {
-            ret = this.ssl.read(tmp, max);
-            if (ret <= 0) {
-                int err = ssl.getError(ret);
+            if(!this.ssl.handshakeDone() || this.toSend != null) {
+                try {
+                    if(this.getUseClientMode()) {
+                        ret = this.ssl.connect();
+                    } else {
+                        ret = this.ssl.accept();
+                    }
+                    if (ret == WolfSSL.SSL_SUCCESS) {
+                        /* Once handshake is finished, save session for resumption in
+                        * case caller does not explicitly close connection. Saves
+                        * session in WolfSSLAuthStore cache, and gets/saves session
+                        * pointer for resumption if on client side. Protected with
+                        * ioLock since underlying get1Session can use I/O for peek. */
+                            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                                "calling EngineHelper.saveSession()");
+                            EngineHelper.saveSession();
+                    }
+                } catch (SocketTimeoutException e) {
+                    throw new SSLException(e);
+                }
+            } else {
+                ret = this.ssl.read(tmp, max);
+                if (ret <= 0) {
+                    int err = ssl.getError(ret);
 
-                switch (err) {
-                    case WolfSSL.SSL_ERROR_WANT_READ:
-                        if (cns > 0) {
-                            hs = SSLEngineResult.HandshakeStatus.NEED_WRAP;
-                        }
-                        break;
-                    case WolfSSL.SSL_ERROR_WANT_WRITE:
-                        break;
-
-                    case WolfSSL.SSL_ERROR_ZERO_RETURN:
-                        /* check if is shutdown message */
-                        if (ssl.getShutdown() == WolfSSL.SSL_RECEIVED_SHUTDOWN) {
-                            this.outBoundOpen = false;
-                            ClosingConnection();
-                            status = SSLEngineResult.Status.CLOSED;
-                            if (toSend != null && toSend.length > 0) {
+                    switch (err) {
+                        case WolfSSL.SSL_ERROR_WANT_READ:
+                            if (cns > 0) {
                                 hs = SSLEngineResult.HandshakeStatus.NEED_WRAP;
                             }
-                        }
-                        break;
+                            break;
+                        case WolfSSL.SSL_ERROR_WANT_WRITE:
+                            break;
 
-                    default:
-                        throw new SSLException("wolfSSL error case " + err);
+                        case WolfSSL.SSL_ERROR_ZERO_RETURN:
+                            /* check if is shutdown message */
+                            if (ssl.getShutdown() == WolfSSL.SSL_RECEIVED_SHUTDOWN) {
+                                this.outBoundOpen = false;
+                                ClosingConnection();
+                                status = SSLEngineResult.Status.CLOSED;
+                                if (toSend != null && toSend.length > 0) {
+                                    hs = SSLEngineResult.HandshakeStatus.NEED_WRAP;
+                                }
+                            }
+                            break;
+
+                        default:
+                            throw new SSLException("wolfSSL error case " + err);
+                    }
                 }
             }
         }

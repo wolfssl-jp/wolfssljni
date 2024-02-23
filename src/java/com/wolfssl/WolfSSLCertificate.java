@@ -46,6 +46,10 @@ public class WolfSSLCertificate {
     private boolean active = false;
     private long x509Ptr = 0;
 
+    /* Does this WolfSSLCertificate own the internal WOLFSSL_X509 pointer?
+     * If not, don't try to free native memory on free(). */
+    private boolean weOwnX509Ptr = false;
+
     /* cache alt names once retrieved once */
     private Collection<List<?>> altNames = null;
 
@@ -86,6 +90,9 @@ public class WolfSSLCertificate {
             throw new WolfSSLException("Failed to create WolfSSLCertificate");
         }
 
+        /* x509Ptr has been allocated natively, mark as owned */
+        this.weOwnX509Ptr = true;
+
         this.active = true;
     }
 
@@ -108,6 +115,9 @@ public class WolfSSLCertificate {
             throw new WolfSSLException("Failed to create WolfSSLCertificate");
         }
 
+        /* x509Ptr has been allocated natively, mark as owned */
+        this.weOwnX509Ptr = true;
+
         this.active = true;
     }
 
@@ -122,6 +132,9 @@ public class WolfSSLCertificate {
         if (x509Ptr <= 0) {
             throw new WolfSSLException("Failed to create WolfSSLCertificate");
         }
+
+        /* x509Ptr has been allocated natively, mark as owned */
+        this.weOwnX509Ptr = true;
 
         this.active = true;
     }
@@ -145,6 +158,9 @@ public class WolfSSLCertificate {
             throw new WolfSSLException("Failed to create WolfSSLCertificate");
         }
 
+        /* x509Ptr has been allocated natively, mark as owned */
+        this.weOwnX509Ptr = true;
+
         this.active = true;
     }
 
@@ -154,6 +170,11 @@ public class WolfSSLCertificate {
             throw new WolfSSLException("Input pointer may not be <= 0");
         }
         x509Ptr = x509;
+
+        /* x509Ptr has NOT been allocated natively, do not mark as owned.
+         * Original owner is responsible for freeing. */
+        this.weOwnX509Ptr = false;
+
         this.active = true;
     }
 
@@ -461,8 +482,11 @@ public class WolfSSLCertificate {
         /* set this.altNames to null so GC can free */
         this.altNames = null;
 
-        /* free native resources */
-        X509_free(this.x509Ptr);
+        /* only free native resources if we own pointer */
+        if (this.weOwnX509Ptr == true) {
+            /* free native resources */
+            X509_free(this.x509Ptr);
+        }
 
         /* free Java resources */
         this.active = false;
