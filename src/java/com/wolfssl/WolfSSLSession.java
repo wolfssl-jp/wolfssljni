@@ -426,7 +426,7 @@ public class WolfSSLSession {
             throw new IllegalStateException("Object has been freed");
 
         WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
-                "cdoHandshake: setServerId()");
+                "doHandshake: setServerId(" + id + ")");
 
         return setServerId(getSessionPtr(), id, id.length());
     }

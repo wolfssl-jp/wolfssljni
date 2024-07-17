@@ -289,13 +289,15 @@ public class WolfSSLAuthStore {
         /* server mode, or client mode with no host */
         if (clientMode == false || host == null) {
             return this.getSession(ssl);
-        }
+        }        
+
         WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
                 "attempting to look up session (" +
-                "host: " + host + ", port: " + port + ")");
+                "host: " + host + ", port: " + port + ", CurrentVersion: " + 
+                this.currentVersion + ")");
 
         /* check if is in table */
-        toHash = host.concat(Integer.toString(port));
+        toHash = host + port + this.currentVersion;
         ses = store.get(toHash.hashCode());
         if (ses == null) {
             /* not found in stored sessions create a new one */

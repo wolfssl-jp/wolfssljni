@@ -546,10 +546,14 @@ public class WolfSSLEngineHelper {
             }
             this.session = this.authStore.getSession(ssl);
         }
-
+        
         if (this.clientMode) {
-            serverId = this.hostname + this.port;
+            serverId = this.hostname + this.port + this.getProtocols();
             ret = this.ssl.setServerId(serverId);
+            
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                "setServerId(" + serverId + ")");
+        
             if(ret != WolfSSL.SSL_SUCCESS)
                 return WolfSSL.SSL_HANDSHAKE_FAILURE;
         }
