@@ -490,10 +490,10 @@ public class WolfSSLEngineHelper {
 
         /* create non null session */
         this.session = this.authStore.getSession(ssl, this.port, this.hostname,
-            this.clientMode);
+            this.clientMode, getCiphers(), getProtocols());
 
         if (this.session != null && this.sessionCreation == false &&
-                !this.session.fromTable) {
+                !this.session.isFromTable) {
             /* new handshakes can not be made in this case. */
             WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
                     "session creation not allowed");
@@ -522,7 +522,7 @@ public class WolfSSLEngineHelper {
             throw new SSLException("setUseClientMode has not been called");
         }
 
-        if (this.sessionCreation == false && !this.session.fromTable) {
+        if (this.sessionCreation == false && !this.session.isFromTable) {
             /* new handshakes can not be made in this case. */
             WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
                     "session creation not allowed");
@@ -577,13 +577,12 @@ public class WolfSSLEngineHelper {
                  (err == WolfSSL.SSL_ERROR_WANT_READ ||
                   err == WolfSSL.SSL_ERROR_WANT_WRITE));
 
-        if (this.clientMode == true && this.sessionCreation) {
-            /*
-             * can only add new sessions to the resumption table if session
-             * creation is allowed
-             */
-            this.authStore.addSession(this.session);
-        }
+        /*
+         * Update cached values in WolfSSLImplementSSLSession from
+         * WolfSSLSession, in case that goes out of scope and is garbage
+         * collected (ex: protocol version).
+         */
+        this.session.updateStoredSessionValues();
 
         return ret;
     }
@@ -591,10 +590,22 @@ public class WolfSSLEngineHelper {
     /**
      * Saves session on connection close for resumption
      */
-    protected void saveSession() {
-        if (this.session.isValid()) {
-            this.session.setResume();
+    protected synchronized int saveSession() {
+    
+        if (this.session != null && this.session.isValid()) {
+            /* Update values from WOLFSSL which are stored in
+             * WolfSSLImplementSSLSession (ex: protocol) */
+            this.session.updateStoredSessionValues();
+
+            if (this.clientMode) {
+                /* Only need to set resume on client side, server-side
+                 * maintains session cache at native level. */
+                this.session.setResume();
+            }
+            return this.authStore.addSession(this.session);
         }
+
+        return WolfSSL.SSL_FAILURE;
     }
 }
 

@@ -168,6 +168,27 @@ JNIEXPORT jint JNICALL Java_com_wolfssl_WolfSSLSession_setServerID
     (JNIEnv *jenv, jlong sslPtr, jstring id, jint length);
 
 /*
+ * Class:     com_wolfssl_WolfSSLSession
+ * Method:    freeNativeSession
+ * Signature: (J)V
+ */
+JNIEXPORT void JNICALL Java_com_wolfssl_WolfSSLSession_freeNativeSession(JNIEnv *, jclass, jlong);
+
+/*
+ * Class:     com_wolfssl_WolfSSLSession
+ * Method:    wolfsslSessionCipherGetName
+ * Signature: (J)Ljava/lang/String;
+ */
+JNIEXPORT jstring JNICALL Java_com_wolfssl_WolfSSLSession_wolfsslSessionCipherGetName(JNIEnv *, jclass, jlong);
+
+/*
+ * Class:     com_wolfssl_WolfSSLSession
+ * Method:    wolfsslSessionIsResumable
+ * Signature: (J)I
+ */
+JNIEXPORT jint JNICALL Java_com_wolfssl_WolfSSLSession_wolfsslSessionIsResumable(JNIEnv *, jclass, jlong);
+
+/*
     * Class:     com_wolfssl_WolfSSLSession
     * Method:    setTimeout
     * Signature: (JJ)I

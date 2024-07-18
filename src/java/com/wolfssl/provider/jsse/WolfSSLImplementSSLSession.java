@@ -53,17 +53,49 @@ public class WolfSSLImplementSSLSession implements SSLSession {
     private final HashMap<String, Object> binding;
     private final int port;
     private final String host;
+    String protocol = null;
     Date creation;
     Date accessed; /* when new connection was made using session */
 
     /**
+     * Is this object currently inside the WolfSSLAuthStore session cache table?
+     *
+     * Used to mark when and where native WOLFSSL_SESSION pointers are freed.
+     * Sessions inside the table always have their sesPtr freed by the finalizer
+     * upon garbage collection. Otherwise, if sessions are taken out of the
+     * table and sesPtr is updated afterwards sesPtrUpdateAfterTable is set to
+     * true and the sesPtr is then freed by that object either during
+     * setResume() or finalization.
+     */
+    protected boolean isInTable = false;
+
+    /**
+     * Indicates if this session was retrieved out of the WolfSSLAuthStore
+     * session table/store. This is used by WolfSSLEngineHelper to help
+     * determine if session creation is allowed. See Javadocs for
+     * SSLEngine/SSLSocket setEnableSessionCreation()
+     */
+    protected boolean isFromTable = false;
+
+    /**
+     * Tracks if WOLFSSL_SESSION pointer has been updated after retreived from
+     * cache table.
+     */
+    protected boolean sesPtrUpdatedAfterTable = false;
+
+    /**
      * has this session been registered
      */
-    protected boolean fromTable = false;
     private long sesPtr = 0;
     private String nullCipher = "SSL_NULL_WITH_NULL_NULL";
     private String nullProtocol = "NONE";
 
+    /*
+     * Lock around access to WOLFSSL_SESSION pointer. Static since there could
+     * be multiple WolfSSLSocket refering to the same WOLFSSL_SESSION pointer
+     * in resumption cases.
+     */
+    private static final Object sesPtrLock = new Object();
 
     public WolfSSLImplementSSLSession (WolfSSLSession in, int port, String host,
             WolfSSLAuthStore params) {
@@ -72,6 +104,8 @@ public class WolfSSLImplementSSLSession implements SSLSession {
         this.host = host;
         this.authStore = params;
         this.valid = false; /* flag if joining or resuming session is allowed */
+        this.sesPtr = 0;
+        this.protocol = this.nullProtocol;
         binding = new HashMap<String, Object>();
 
         creation = new Date();
@@ -85,6 +119,8 @@ public class WolfSSLImplementSSLSession implements SSLSession {
         this.host = null;
         this.authStore = params;
         this.valid = false; /* flag if joining or resuming session is allowed */
+        this.sesPtr = 0;
+        this.protocol = this.nullProtocol;
         binding = new HashMap<String, Object>();
 
         creation = new Date();
@@ -96,6 +132,8 @@ public class WolfSSLImplementSSLSession implements SSLSession {
         this.host = null;
         this.authStore = params;
         this.valid = false; /* flag if joining or resuming session is allowed */
+        this.sesPtr = 0;
+        this.protocol = this.nullProtocol;
         binding = new HashMap<String, Object>();
 
         creation = new Date();
@@ -138,6 +176,20 @@ public class WolfSSLImplementSSLSession implements SSLSession {
     }
 
     /**
+     * Return status of internal session pointer (WOLFSSL_SESSION).
+     * 
+     * @return true if this.sesPtr is set, otherwise false if 0
+     */
+    protected boolean sessionPointerSet() {
+        synchronized (sesPtrLock) {
+            if (this.sesPtr == 0) {
+                return false;
+            }
+            return true;
+        }
+    }
+
+    /**
      * After a connection has been established or on restoring connection the session
      * is then valid and can be joined or resumed
      * @param in true/false valid boolean
@@ -145,6 +197,25 @@ public class WolfSSLImplementSSLSession implements SSLSession {
     protected void setValid(boolean in) {
         this.valid = in;
     }
+
+    /**
+     * Check if this session is resumable.
+     *
+     * Calls down to native wolfSSL_SESSION_is_resumable() with
+     * WOLFSSL_SESSION pointer.
+     *
+     * @return true if resumable, otherwise false
+     */
+    protected synchronized boolean isResumable() {
+        synchronized (sesPtrLock) {
+            if (WolfSSLSession.sessionIsResumable(this.sesPtr) == 1) {
+                return true;
+            } else {
+                return false;
+            }
+        }
+    }
+
 
     public void putValue(String name, Object obj) {
         Object old;
@@ -308,20 +379,22 @@ public class WolfSSLImplementSSLSession implements SSLSession {
         return null;
     }
 
+    /**
+     * Return the cipher suite from the native WOLFSSL_SESSION structure.
+     *
+     * @return String representation of the cipher suite from the native
+     *         WOLFSSL_SESSION structure, or NULL if not able to be
+     *         retrieved.
+     */
+    public synchronized String getSessionCipherSuite() {
+        synchronized (sesPtrLock) {
+            return WolfSSLSession.sessionGetCipherName(this.sesPtr);
+        }
+    }
+
     @Override
     public String getProtocol() {
-        if (ssl == null) {
-            return this.nullProtocol;
-        }
-
-        try {
-            return this.ssl.getVersion();
-        } catch (IllegalStateException | WolfSSLJNIException ex) {
-            Logger.getLogger(
-                    WolfSSLImplementSSLSession.class.getName()).log(
-                        Level.SEVERE, null, ex);
-        }
-        return null;
+           return this.protocol;
     }
 
     @Override
@@ -360,11 +433,79 @@ public class WolfSSLImplementSSLSession implements SSLSession {
 
 
     /**
-     * Should be called on shutdown to save the session pointer
+     * Should be called on shutdown or after handshake has completed to save
+     * the session pointer.
      */
-    protected void setResume() {
+    protected synchronized void setResume() {
+
+        long tmpSesPtr = 0;
+
         if (ssl != null) {
-            this.sesPtr = ssl.getSession();
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                "entered setResume(), trying to get sesPtrLock");
+
+            synchronized (sesPtrLock) {
+                WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                    "got sesPtrLock: this.sesPtr = " + this.sesPtr);
+
+                /* Only free existing WOLFSSL_SESSION pointer if this
+                 * object is in the WolfSSLAuthStore cache table (store),
+                 * or it is NOT in the store but has been updated after it
+                 * was pulled out of the store. The original WOLFSSL_SESSION
+                 * pointer is freed when that original object is garbage
+                 * collected during finalization or manually freed */
+                if (this.sesPtr != 0) {
+                    if (this.isInTable ||
+                        (!this.isInTable && this.sesPtrUpdatedAfterTable)) {
+
+                        WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                           "calling WolfSSLSession.freeSession(this.sesPtr)");
+
+                        WolfSSLSession.freeSession(this.sesPtr);
+                        /* reset this.sesPtr to 0 in case ssl.getSession() below
+                         * blocks on WOLFSSL lock */
+                        this.sesPtr = 0;
+                    }
+                }
+            }
+
+            /* Get new WOLFSSL_SESSION pointer for updated WOLFSSL locally
+             * instead inside of sesPtrLock to minimize blocking time inside
+             * that lock, then set class variable next inside lock once
+             * value has been retrieved. */
+            tmpSesPtr = ssl.getSession();
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                "called ssl.getSession(), new this.sesPtr = " +
+                tmpSesPtr);
+
+            synchronized (sesPtrLock) {
+                this.sesPtr = tmpSesPtr;
+
+                if (this.sesPtr != 0) {
+                    this.valid = true;
+                }
+
+                /* If this object is not in the WolfSSLAuthStore store,
+                 * mark that we have updated the sesPtr in order to
+                 * correctly free later on */
+                if (!this.isInTable) {
+                    this.sesPtrUpdatedAfterTable = true;
+                }
+            }
+
+            /* Update cached values in this SSLSession from WolfSSLSession,
+             * in case that goes out of scope and is garbage collected. */
+            updateStoredSessionValues();
+        }
+    }
+
+    protected synchronized void updateStoredSessionValues() {
+
+        try {
+            this.protocol = this.ssl.getVersion();
+        } catch (IllegalStateException | WolfSSLJNIException ex) {
+            WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                    "Not able to update stored WOLFSSL protocol");
         }
     }
 

@@ -1122,6 +1122,64 @@ JNIEXPORT jint JNICALL Java_com_wolfssl_WolfSSLSession_setServerId(JNIEnv *jenv,
     return SSL_FAILURE;
 }
 
+JNIEXPORT void JNICALL Java_com_wolfssl_WolfSSLSession_freeNativeSession
+  (JNIEnv* jenv, jclass jcl, jlong sessionPtr)
+{
+    WOLFSSL_SESSION* session = (WOLFSSL_SESSION*)(uintptr_t)sessionPtr;
+    (void)jcl;
+
+    if (jenv == NULL) {
+        return;
+    }
+
+    /* checks session for NULL */
+    wolfSSL_SESSION_free(session);
+}
+
+JNIEXPORT jint JNICALL Java_com_wolfssl_WolfSSLSession_wolfsslSessionIsResumable
+  (JNIEnv* jenv, jclass jcl, jlong sessionPtr)
+{
+#ifdef OPENSSL_EXTRA
+    int ret;
+    WOLFSSL_SESSION* session = (WOLFSSL_SESSION*)(uintptr_t)sessionPtr;
+    (void)jcl;
+
+    if (jenv == NULL) {
+        return 0;
+    }
+
+    ret = wolfSSL_SESSION_is_resumable(session);
+
+    return (jint)ret;
+#else
+    (void)jenv;
+    (void)jcl;
+    (void)sessionPtr;
+    return (jint)NOT_COMPILED_IN;
+#endif
+}
+
+JNIEXPORT jstring JNICALL Java_com_wolfssl_WolfSSLSession_wolfsslSessionCipherGetName
+  (JNIEnv* jenv, jclass jcl, jlong sessionPtr)
+{
+    WOLFSSL_SESSION* session = (WOLFSSL_SESSION*)(uintptr_t)sessionPtr;
+    const char* cipherName;
+    jstring cipherStr = NULL;
+    (void)jcl;
+
+    if (jenv == NULL || session == NULL) {
+        return NULL;
+    }
+
+    cipherName = wolfSSL_SESSION_CIPHER_get_name(session);
+
+    if (cipherName != NULL) {
+        cipherStr = (*jenv)->NewStringUTF(jenv, cipherName);
+    }
+
+    return cipherStr;
+}
+
 JNIEXPORT jint JNICALL Java_com_wolfssl_WolfSSLSession_setTimeout
   (JNIEnv* jenv, jobject jcl, jlong ssl, jlong t)
 {

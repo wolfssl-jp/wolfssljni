@@ -200,6 +200,9 @@ public class WolfSSLSession {
     private native int getError(long ssl, int ret);
     private native int setSession(long ssl, long session);
     private native long getSession(long ssl);
+    private static native void freeNativeSession(long session);
+    private static native int wolfsslSessionIsResumable(long ssl);
+    private static native String wolfsslSessionCipherGetName(long ssl);
     private native int setServerId(long ssl, String id, int length);
     private native byte[] getSessionID(long session);
     private native int setTimeout(long ssl, long t);
@@ -1013,12 +1016,31 @@ public class WolfSSLSession {
     }
 
     /**
+     * Free the native WOLFSSL_SESSION structure pointed to be session.
+     *
+     * @param session native WOLFSSL_SESSION pointer to free
+     */
+    public static synchronized void freeSession(long session) {
+        /*
+         * No need to call confirmObjectIsActive() because the
+         * WOLFSSL_SESSION pointer being passed in here is not associated
+         * with this WOLFSSL object or WolfSSLSession.
+         */
+
+        if (session != 0) {
+            freeNativeSession(session);
+        }
+    }
+
+    /**
+     * 
+     * /**
      * Returns the session ID.
      *
      * @throws IllegalStateException WolfSSLContext has been freed
-     * @return      the session ID, or a empty array if unable to get valid
-     *              session ID
-     * @see         #setSession(long)
+     * @return the session ID, or a empty array if unable to get valid
+     *         session ID
+     * @see #setSession(long)
      */
     public byte[] getSessionID() throws IllegalStateException {
 
@@ -1031,6 +1053,53 @@ public class WolfSSLSession {
         } else {
             return new byte[0];
         }
+    }
+
+    /**
+     * Check if native WOLFSSL_SESSION is resumable, calling native
+     * wolfSSL_SESSION_is_resumable().
+     *
+     * This method is static and does not check active state since this
+     * takes a native pointer and has no interaction with the rest of this
+     * object.
+     *
+     * @param session pointer to native WOLFSSL_SESSION structure. May be
+     *                obtained from getSession().
+     *
+     * @return 1 if session is resumable, otherwise 0. Returns
+     *         WolfSSL.NOT_COMPILED_IN if native wolfSSL does not have
+     *         wolfSSL_SESSION_is_resumable() compiled in.
+     */
+    public static int sessionIsResumable(long session) {
+
+        if (session == 0) {
+            return 0;
+        }
+
+        return wolfsslSessionIsResumable(session);
+    }
+
+    /**
+     * Get cipher suite name from WOLFSSL_SESSION, calling native
+     * wolfSSL_SESSION_CIPHER_get_name().
+     *
+     * This method is static and does not check active state since this
+     * takes a native pointer and has no interaction with the rest of this
+     * object.
+     *
+     * @param session pointer to native WOLFSSL_SESSION structure. May have
+     *                been obtained from getSession().
+     * @return String representation of the cipher suite used in native
+     *         WOLFSSL_SESSION structure, or NULL if not able to find the
+     *         session.
+     */
+    public static String sessionGetCipherName(long session) {
+
+        if (session == 0) {
+            return null;
+        }
+
+        return wolfsslSessionCipherGetName(session);
     }
 
     /**
