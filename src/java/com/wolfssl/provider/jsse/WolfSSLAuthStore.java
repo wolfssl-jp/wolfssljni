@@ -316,9 +316,9 @@ public class WolfSSLAuthStore {
                 else {
                     ses.setSessionContext(clientCtx);
                 }
-                WolfSSLDebug.logHex(getClass(), WolfSSLDebug.INFO,
-                        "session not found in cache table, creating new, Session ID: ",
-                        ses.getId(), ses.getId().length);
+                WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                        "session not found in cache table, " +
+                        "creating new session");
             }
             else {
                 /* Remove old entry from table. TLS 1.3 binder changes between
@@ -327,11 +327,6 @@ public class WolfSSLAuthStore {
                 * after the resumed session completes the handshake, for
                 * subsequent resumption attempts to use. */
                 store.remove(toHash.hashCode());
-
-                WolfSSLDebug.logHex(getClass(), WolfSSLDebug.INFO,
-                        "session found in cache, trying to resume, Session ID: ",
-                        ses.getId(), ses.getId().length);
-
 
                 if (ses.resume(ssl) != WolfSSL.SSL_SUCCESS) {
                     WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
@@ -348,7 +343,8 @@ public class WolfSSLAuthStore {
                         ses.setSessionContext(clientCtx);
                     }
                 }
-
+                WolfSSLDebug.log(getClass(), WolfSSLDebug.INFO,
+                        "session found in cache, trying to resume");
             }
             return ses;
         }
