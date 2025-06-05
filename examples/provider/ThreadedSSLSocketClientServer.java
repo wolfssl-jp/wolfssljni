@@ -156,41 +156,37 @@ public class ThreadedSSLSocketClientServer
                 }
             }
 
-            if (true) {
-                try {
-                    Certificate[] certs = session.getPeerCertificates();
-                    Certificate[] certs1 = session.getPeerCertificates();
-                    if (certs != null && certs.length > 0 && showCert) {
-                        System.out.println(((X509Certificate)certs[0]).toString());
-                    }
-                    else if(certs == null)
-                    {
-                        throw new Exception("Certs are NULL!!!!");
-                    }
-                     if (certs1 != null && certs1.length > 0 && showCert) {
-                        System.out.println(((X509Certificate)certs1[0]).toString());
-                    }
-                    else if(certs1 == null)
-                    {
-                        throw new Exception("Certs1 are NULL!!!!");
-                    }
-                    if(getAlt) {
-                        X509Certificate cert = (X509Certificate)certs[0];
-                        List<String> altNames1 = getSubjectAltNames(cert, 2);
-                        boolean hasDns = false;
-                        if (altNames1.size() == 0) {
-                            throw new Exception("alt Name size is zero!!!!!!!!");
-                        }
-                        /*List<String> altNames2 = getSubjectAltNames(cert, 2);
-                        System.out.println("List2 = "+ altNames2 + "ListSize = " + altNames2.size());*/
-                    }
-
-                } catch (Exception e) {
-                    long threadId = Thread.currentThread().getId();
-                    System.out.println("Thread # " + threadId);
-                    System.out.println("ID(" + ID + ") has an exception.");
-                    e.printStackTrace();
+            try {
+                Certificate[] certs = session.getPeerCertificates();
+                Certificate[] certs1 = session.getPeerCertificates();
+                if (certs != null && certs.length > 0 && showCert) {
+                    System.out.println(((X509Certificate)certs[0]).toString());
                 }
+                else if(certs == null)
+                {
+                    throw new Exception("Certs are NULL!!!!");
+                }
+                if (certs1 != null && certs1.length > 0 && showCert) {
+                    System.out.println(((X509Certificate)certs1[0]).toString());
+                }
+                else if(certs1 == null)
+                {
+                    throw new Exception("Certs1 are NULL!!!!");
+                }
+                if(getAlt) {
+                    X509Certificate cert = (X509Certificate)certs[0];
+                    List<String> altNames1 = getSubjectAltNames(cert, 2);
+                    boolean hasDns = false;
+                    if (altNames1.size() == 0) {
+                        throw new Exception("alt Name size is zero!!!!!!!!");
+                    }
+                }
+
+            } catch (Exception e) {
+                long threadId = Thread.currentThread().getId();
+                System.out.println("Thread # " + threadId);
+                System.out.println("ID(" + ID + ") has an exception.");
+                e.printStackTrace();
             }
         }
 
